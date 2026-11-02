@@ -22,6 +22,8 @@ permissions:
 
 env:
   DESKFLOW_TAG: v1.27.0
+  # Qt comes through aqtinstall with Deskflow's own mirror settings (the default server times out)
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
   PYTHON_VERSION: "3.12"
 
 jobs:
@@ -57,7 +59,12 @@ jobs:
         with: {repository: deskflow/deskflow, ref: "${{ env.DESKFLOW_TAG }}", path: deskflow}
       - run: brew install --quiet openssl ninja
       - uses: jurplel/install-qt-action@v4
-        with: {version: "${{ matrix.qt }}", cache: true, cache-key-prefix: "qt-mac-${{ matrix.arch }}"}
+        env: {AQT_CONFIG: "${{ github.workspace }}/deskflow/.github/actions/install-dependencies/aqt.ini"}
+        with:
+          version: "${{ matrix.qt }}"
+          cache: true
+          cache-key-prefix: "qt-mac-${{ matrix.arch }}"
+          aqtsource: ${{ env.AQT_SOURCE }}
       - name: Build
         working-directory: deskflow
         run: |
@@ -69,7 +76,8 @@ jobs:
           ls build/*.dmg
       - name: Take Deskflow.app out of its disk image
         run: |
-          hdiutil attach -nobrowse -readonly -mountpoint /tmp/df "$(ls deskflow/build/*.dmg | head -1)"
+          # the image shows Deskflow's licence before it opens: agree (WinLink ships it alongside, below)
+          { yes || true; } | PAGER=true hdiutil attach -nobrowse -readonly -mountpoint /tmp/df "$(ls deskflow/build/*.dmg | head -1)" > /dev/null
           mkdir -p out
           ditto /tmp/df/Deskflow.app out/Deskflow.app
           hdiutil detach /tmp/df
@@ -91,7 +99,12 @@ jobs:
       - uses: TheMrMilchmann/setup-msvc-dev@v4
         with: {arch: amd64, spectre: true}
       - uses: jurplel/install-qt-action@v4
-        with: {version: "6.11.3", cache: true, cache-key-prefix: "qt-win-x64"}
+        env: {AQT_CONFIG: "${{ github.workspace }}/deskflow/.github/actions/install-dependencies/aqt.ini"}
+        with:
+          version: "6.11.3"
+          cache: true
+          cache-key-prefix: "qt-win-x64"
+          aqtsource: ${{ env.AQT_SOURCE }}
       - id: vcpkg
         uses: johnwason/vcpkg-action@v8
         with:
@@ -238,9 +251,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ./release/winlink_*.deb
-          winlink --check || true
+          winlink --check || echo "(some checks fail here: no sound devices on a build machine)"
           WINLINK_HEADLESS=1 LINK_HOME="$RUNNER_TEMP/home" timeout 60 winlink help | head -5
-          /usr/bin/python3 -c "import sys; sys.path[:0] = ['/usr/lib/winlink/src', '/usr/lib/winlink/vendor']; import webview, pystray, sounddevice, zeroconf, app, kvm, net"
+          # no screen here: pystray (tray) needs one, so it's left out of this import check
+          /usr/bin/python3 -c "import sys; sys.path[:0] = ['/usr/lib/winlink/src', '/usr/lib/winlink/vendor']; import webview, sounddevice, zeroconf, app, kvm, net"
       - uses: actions/upload-artifact@v4
         with: {name: "winlink-linux-${{ matrix.arch }}", path: "release/*", retention-days: 14}
 

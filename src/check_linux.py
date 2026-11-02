@@ -100,14 +100,19 @@ def check():
         else "secret-tool missing: Tailscale's key is kept in a private file instead (libsecret-tools)")
 
     # tray
-    try:
-        import tray
-        why = tray.linux_tray_problem()
-        import pystray  # noqa: F401
-        row(OK if not why else WARN, "Tray icon", "shown in the panel; minimising hides WinLink there" if not why
-            else f"{why}. WinLink works without it (minimising works as usual)")
-    except ImportError:
-        row(WARN, "Tray icon", "pystray missing (pip): no tray icon")
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        row(OK, "Tray icon", "no desktop here: not needed ('winlink daemon' runs without one)")
+    else:
+        try:
+            import tray
+            why = tray.linux_tray_problem()
+            import pystray  # noqa: F401
+            row(OK if not why else WARN, "Tray icon", "shown in the panel; minimising hides WinLink there" if not why
+                else f"{why}. WinLink works without it (minimising works as usual)")
+        except ImportError:
+            row(WARN, "Tray icon", "pystray missing (pip): no tray icon")
+        except Exception as e:  # noqa: BLE001  (pystray's X11 backend can't reach the display)
+            row(WARN, "Tray icon", f"can't show one ({e}). WinLink works without it")
 
     # right-click menu
     found = [n for n in ("nautilus", "dolphin", "nemo") if shutil.which(n)]
