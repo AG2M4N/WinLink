@@ -3,6 +3,7 @@
 set -e
 APP=$1
 OUT=$2
+mkdir -p "$(dirname "$OUT")"
 T=$(mktemp -d)
 ditto "$APP" "$T/WinLink.app"
 ln -s /Applications "$T/Applications"
