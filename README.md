@@ -48,6 +48,7 @@
 | **Finds devices by itself** | No IP addresses. Bonjour and broadcast on the local network, including phone hotspots and IPv6-only networks. |
 | **From anywhere** | Built-in Tailscale: switch on *Connect from anywhere*, sign in once, and your devices reach each other on any network, no Tailscale app needed. Back on the same Wi‑Fi, WinLink moves to the faster direct route without interrupting anything. |
 | **Private** | Devices pair with a 4-digit code, every connection proves it's paired, and everything is encrypted, on Wi‑Fi too. |
+| **Keyboard and mouse** | Use one computer's keyboard and mouse on the others: move the pointer off the edge of the screen. Built on [Deskflow](https://github.com/deskflow/deskflow), set up and secured by WinLink. |
 | **Quiet** | Lives in the menu bar or tray, opens at login, keeps the computer awake only while sound plays or a transfer runs. |
 | **Headless** | On Linux servers, `winlink daemon` plus a full command line: pair, send folders with progress, clipboard, sound, Tailscale sign-in. |
 
@@ -104,6 +105,9 @@ WinLink's window uses Microsoft Edge WebView2, which is built into Windows 10 an
 (Snapdragon laptops), install the regular 64-bit (x64) Python; it runs fine there.
 
 ### Linux
+📖 **[The full Linux guide and command reference](docs/linux.md)**: desktop and headless use, every
+`winlink` command, scripting, systemd, firewall and troubleshooting.
+
 `install_linux.sh` installs the few system packages WinLink needs (asking for your password once), sets
 WinLink up for your user in `~/.local/share/winlink`, adds it to your apps menu and can start it at
 login. It works on Ubuntu, Debian, Mint, Pop!_OS, Fedora, Arch, Manjaro and openSUSE, with GNOME, KDE,
@@ -159,6 +163,32 @@ someone else's, so sound can't loop between them.
 - **Quality** (on the device that shares): Auto (lossless on Wi‑Fi, CD quality over Tailscale), Lossless,
   CD quality, or Data saver for weak links.
 
+### Keyboard and mouse
+Use one computer's keyboard and mouse on your other computers, like one big desk: move the pointer off
+the edge of the screen and keep typing on the next one.
+
+1. Install **[Deskflow](https://github.com/deskflow/deskflow/releases/latest)** (free, open source) on each
+   computer. WinLink finds it by itself; it doesn't need to be opened or set up.
+2. On the computer whose keyboard and mouse you want to use: Devices → **Keyboard and mouse** → turn on
+   **Share this computer's keyboard and mouse**.
+3. **Arrange the screens** the way they stand on your desk: drag your other computers from the tray
+   onto the arrangement, next to this screen or next to each other (a row of three, one above
+   another…). Screens that touch are linked, so the pointer moves across their shared edge. A screen
+   that doesn't touch any other is outlined in red; drag one back to the tray to take it out.
+
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/keyboard-mouse-dark.png"><img src="docs/screenshots/keyboard-mouse-light.png" width="720" alt="Keyboard and mouse: this Mac shares its keyboard and mouse, Msi placed on the right and connected"></picture></p>
+
+WinLink writes Deskflow's configuration, gives each computer a TLS certificate and exchanges
+fingerprints over its own encrypted link, so Deskflow only accepts your paired computers and never
+asks you to compare fingerprints. Deskflow's clipboard sharing stays off (WinLink shares the clipboard,
+with images and history). Its files live in WinLink's settings folder, so a Deskflow you set up yourself
+isn't touched.
+
+- On a **Mac**, allow WinLink under *Privacy & Security → Accessibility* (WinLink shows a button).
+- The other computers follow automatically; turn off *Let other computers control this one* to refuse.
+- It works on the same network, or over the Tailscale app. WinLink's built-in Tailscale runs inside
+  WinLink, so Deskflow can't use it yet.
+
 ### Connect from anywhere
 1. Switch on **Connect from anywhere** on each device (Devices page; on Android, *Away from home*).
 2. Click **Sign in** and sign in to Tailscale in the browser (a free account works), with the **same
@@ -180,7 +210,7 @@ Hidden, WinLink isn't slowed down by App Nap or Windows' efficiency mode, and wh
 transfer runs the computer doesn't fall asleep (the screen still turns off); afterwards it sleeps normally.
 
 ### Linux without a desktop
-`winlink daemon` runs WinLink without a window; `winlink service install` keeps it running at every boot
+See **[docs/linux.md](docs/linux.md)** for every command with examples. In short: `winlink daemon` runs WinLink without a window; `winlink service install` keeps it running at every boot
 (systemd user service; on a server also run `sudo loginctl enable-linger $USER`).
 
 ```text
@@ -269,13 +299,15 @@ npm run test:protocol   # pairing, clipboard, files and sound both ways
 npm run test:faults     # cut and silent connections during every kind of transfer
 npm run test:switch     # moving from Tailscale to Wi-Fi mid-transfer and mid-song
 npm run test:tailnet    # the built-in Tailscale helper
+python3 tests/harness/desktop_kvm.py "$(mktemp -d)"   # keyboard and mouse, with Deskflow installed
 ```
 
 ## Project layout
 
 ```text
 src/            the desktop app (Python): app.py window and state, net.py networking, audio.py sound,
-                secure.py encryption, cli.py + commands.py command line, tray.py, autostart.py,
+                secure.py encryption, cli.py + commands.py command line, kvm.py keyboard and mouse
+                (Deskflow), tray.py, autostart.py, keepawake.py,
                 clip_*.py clipboards, notch_mac.py, webui/ the window's HTML
 helper/         the built-in Tailscale helper (Go, tsnet) and its build scripts
 mobile/         the phone app (Expo): src/core protocol, modules/winlink-native Kotlin and Swift, tests/
@@ -284,14 +316,15 @@ docs/           screenshots
 ```
 
 ## Roadmap
-- Keyboard and mouse sharing between computers, by bundling [Deskflow](https://github.com/deskflow/deskflow)'s engine.
+- Bundle Deskflow's engine, so keyboard and mouse sharing works without installing Deskflow, and over the built-in Tailscale.
 - Automatic phone → computer clipboard on Android (text-selection menu, send on open, optional automatic mode).
 - iPhone release build.
 
 ## License
 WinLink is free software under the [GNU General Public License v3.0](LICENSE).
 
-It builds on [Tailscale](https://github.com/tailscale/tailscale) (BSD-3-Clause),
+Keyboard and mouse sharing runs [Deskflow](https://github.com/deskflow/deskflow) (GPL-2.0), installed
+separately, as its own program. It builds on [Tailscale](https://github.com/tailscale/tailscale) (BSD-3-Clause),
 [pywebview](https://github.com/r0x0r/pywebview), [Expo](https://expo.dev) and
 [React Native](https://reactnative.dev), [python-zeroconf](https://github.com/python-zeroconf/python-zeroconf),
 [sounddevice](https://github.com/spatialaudio/python-sounddevice),

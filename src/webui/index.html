@@ -108,6 +108,25 @@ h2 button { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .facts .k { width: 108px; flex: none; color: var(--text-2); font-size: 12.5px; }
 .facts .v { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+.arrangewrap { padding: 0 14px 14px; }
+.arrange { position: relative; height: 260px; border-radius: 12px; background: var(--raised); overflow: hidden; touch-action: none; }
+.tile { position: absolute; width: 114px; height: 70px; border-radius: 10px; background: var(--surface); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: grab; user-select: none;
+  transition: left .18s, top .18s, opacity .15s; padding: 0 6px; text-align: center; }
+.tile svg { width: 18px; height: 18px; color: var(--text-2); }
+.tile .nm { font-size: 12px; font-weight: 560; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .st { font-size: 10.5px; color: var(--text-2); }
+.tile.on .st, .tile.on svg { color: var(--good); }
+.tile.bad { box-shadow: 0 0 0 1.5px var(--bad); } .tile.bad .st { color: var(--bad); }
+.tile.me { background: var(--accent-soft); box-shadow: 0 0 0 1.5px var(--accent); cursor: default; }
+.tile.me svg { color: var(--accent); }
+.tile.lifted { opacity: .25; }
+.tile.ghost { position: fixed; z-index: 50; cursor: grabbing; transition: none; box-shadow: 0 10px 28px rgba(0, 0, 0, .22); pointer-events: none; }
+.slot { position: absolute; width: 114px; height: 70px; border-radius: 10px; border: 1.5px dashed var(--text-3); opacity: .55; }
+.slot.hot { border-color: var(--accent); background: var(--accent-soft); opacity: 1; }
+.tray { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 86px; padding: 8px 2px 0; }
+.tray .tile { position: relative; }
+.arrangewrap .hint { padding-left: 2px; margin: 6px 0 0; }
 .sub.good { color: var(--good); } .sub.warn { color: var(--warn); } .sub.bad { color: var(--bad); } .sub.strong { color: var(--text); }
 .icon { width: 34px; height: 34px; border-radius: 9px; background: var(--raised); color: var(--text-2);
         display: grid; place-items: center; flex: none; }
@@ -268,6 +287,8 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
       <div id="devices"></div>
       <h2>Different networks</h2>
       <div class="card" id="anywhere"></div>
+      <h2>Keyboard and mouse</h2>
+      <div class="card" id="kvm"></div>
     </section>
 
     <section class="page" data-page="files">
@@ -343,6 +364,7 @@ const I = {
   windows: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.6"/><path d="M9 20h6M12 16v4"/></svg>',
   android: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>',
   ios: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>',
+  keyboard: '<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M6.5 14h11"/></svg>',
   globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.5 5.4 3.5 8.5s-1.1 5.9-3.5 8.5c-2.4-2.6-3.5-5.4-3.5-8.5s1.1-5.9 3.5-8.5z"/></svg>',
   up: '<svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24"><path d="M12 5v14m0 0-6-6m6 6 6-6"/></svg>',
@@ -412,6 +434,153 @@ function render(s) {
   }
 }
 
+// ---------------------------------------------------------------- keyboard and mouse (Deskflow)
+const CELL_W = 128, CELL_H = 84, TILE_W = 114, TILE_H = 70;
+let kvmDrag = null;            // the tile being dragged (the card isn't redrawn meanwhile)
+
+function renderKvm(s) {
+  const k = s.kvm;
+  if (!k || kvmDrag) return;
+  let h;
+  if (!k.available) {
+    h = `<div class="row"><div class="icon">${I.keyboard}</div>
+      <div class="grow"><div class="name">One keyboard and mouse for all your computers</div>
+      <div class="sub">Move the pointer off the edge of this screen and keep working on the next computer. Uses Deskflow (free, open source): install it on each computer and WinLink sets everything up.</div></div>
+      <div class="actions"><button class="btn primary" data-act="kvm_get">Get Deskflow</button><button class="btn quiet" data-act="kvm_recheck">I've installed it</button></div></div>`;
+  } else {
+    const sub = k.role === "client" ? `Following ${esc(k.following)}'s keyboard and mouse.`
+      : k.share ? esc(k.status || "Drag your other computers next to this one.") : "Use it on your other computers: move the pointer off this screen's edge.";
+    h = `<div class="row"><div class="icon ${k.share || k.role === "client" ? "on" : ""}">${I.keyboard}</div>
+      <div class="grow"><div class="name">Share this ${s.me.kind === "mac" ? "Mac" : "PC"}'s keyboard and mouse</div><div class="sub ${k.role === "client" ? "good" : ""}">${sub}</div>
+      ${k.problem ? `<div class="sub bad">${esc(k.problem)}</div>` : ""}</div>${sw("kvm_share", k.share)}</div>`;
+    if (k.needs_accessibility && (k.share || k.role)) h += `<div class="row"><div class="icon">${I.keyboard}</div>
+      <div class="grow"><div class="name">macOS needs your permission</div><div class="sub bad">Turn WinLink on under Privacy &amp; Security › Accessibility so it can use the keyboard and mouse.</div></div>
+      <button class="btn" data-act="kvm_accessibility">Open settings</button></div>`;
+    if (k.share) {
+      const placed = k.computers.filter((c) => c.pos), waiting = k.computers.filter((c) => !c.pos);
+      // which screens the pointer can reach from this one (touching edges), so a stranded one shows at once
+      const at = new Map(placed.map((c) => [c.pos.join(","), c])), seen = new Set(["0,0"]), todo = [[0, 0]];
+      while (todo.length) {
+        const [x, y] = todo.pop();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const key = `${x + dx},${y + dy}`;
+          if (at.has(key) && !seen.has(key)) { seen.add(key); todo.push([x + dx, y + dy]); }
+        }
+      }
+      placed.forEach((c) => { c.reachable = seen.has(c.pos.join(",")); });
+      const tile = (c) => `<div class="tile ${c.on && c.reachable !== false ? "on" : ""} ${c.reachable === false ? "bad" : ""}" data-kvm="${attr(c.id)}" ${c.pos ? `data-x="${c.pos[0]}" data-y="${c.pos[1]}"` : ""} title="${attr(c.text || "")}">
+        ${I[c.os] || I.windows}<span class="nm">${esc(c.name)}</span><span class="st">${esc(c.pos ? (c.reachable === false ? "Not touching" : c.on ? "Connected" : (c.text || "Waiting…")) : "Drag to place")}</span></div>`;
+      h += `<div class="arrangewrap"><div class="arrange" id="arrange">
+          <div class="tile me" data-x="0" data-y="0" title="${attr(k.me.name)}">${I[k.me.os] || I.windows}<span class="nm">${esc(k.me.name)}</span><span class="st">This ${s.me.kind === "mac" ? "Mac" : "PC"}</span></div>
+          ${placed.map(tile).join("")}</div>
+        <div class="tray" id="kvm-tray">${waiting.length ? waiting.map(tile).join("") : `<span class="sub">${k.computers.length ? "Drag a screen here to take it out." : "Connect another Mac or PC to place it here."}</span>`}</div>
+        <p class="hint">Arrange the screens the way they stand on your desk. Screens that touch are linked: the pointer moves across their shared edge.</p></div>`;
+    }
+    h += `<div class="row"><div class="grow"><div class="name">Let other computers control this one</div>
+      <div class="sub">When a paired computer shares its keyboard and mouse and places this one next to it.</div></div>${sw("kvm_allow", k.allow)}</div>`;
+  }
+  paint("kvm", h);
+  placeTiles();
+}
+
+// Tiles sit on a grid; the arrangement is centred and the box grows with it (plus a free ring around).
+function arrangeBox() {
+  const box = $("arrange");
+  if (!box) return null;
+  const cells = [...box.querySelectorAll(".tile[data-x]")].map((t) => [+t.dataset.x, +t.dataset.y]);
+  const xs = cells.map((c) => c[0]), ys = cells.map((c) => c[1]);
+  const minX = Math.min(...xs) - 1, maxX = Math.max(...xs) + 1, minY = Math.min(...ys) - 1, maxY = Math.max(...ys) + 1;
+  const height = (maxY - minY + 1) * CELL_H + 16;
+  box.style.height = height + "px";
+  const ox = (box.clientWidth - (maxX - minX + 1) * CELL_W) / 2 + (CELL_W - TILE_W) / 2 - minX * CELL_W;
+  const oy = 8 + (CELL_H - TILE_H) / 2 - minY * CELL_H;
+  return {box, ox, oy, minX, maxX, minY, maxY};
+}
+function placeTiles() {
+  const g = arrangeBox();
+  if (!g) return;
+  g.box.querySelectorAll(".tile[data-x]").forEach((t) => {
+    t.style.left = g.ox + +t.dataset.x * CELL_W + "px";
+    t.style.top = g.oy + +t.dataset.y * CELL_H + "px";
+  });
+}
+window.addEventListener("resize", placeTiles);
+
+// Free spots next to the screens already placed (not counting the one being moved).
+function freeSpots(except) {
+  const taken = new Set(), spots = new Map();
+  document.querySelectorAll("#arrange .tile[data-x]").forEach((t) => { if (t.dataset.kvm !== except) taken.add(`${t.dataset.x},${t.dataset.y}`); });
+  taken.forEach((key) => {
+    const [x, y] = key.split(",").map(Number);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const k2 = `${x + dx},${y + dy}`;
+      if (!taken.has(k2) && Math.abs(x + dx) <= 6 && Math.abs(y + dy) <= 6) spots.set(k2, [x + dx, y + dy]);
+    }
+  });
+  return [...spots.values()];
+}
+
+document.addEventListener("pointerdown", (e) => {
+  const t = e.target.closest(".tile[data-kvm]");
+  if (!t || e.button !== 0) return;
+  e.preventDefault();
+  const r = t.getBoundingClientRect();
+  const ghost = t.cloneNode(true);
+  ghost.classList.add("ghost");
+  Object.assign(ghost.style, {left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px"});
+  document.body.appendChild(ghost);
+  t.classList.add("lifted");
+  kvmDrag = {id: t.dataset.kvm, tile: t, ghost, dx: e.clientX - r.left, dy: e.clientY - r.top, spot: null};
+  // show where it can go
+  const g = arrangeBox();
+  if (g) for (const [x, y] of freeSpots(kvmDrag.id)) {
+    const slot = document.createElement("div");
+    slot.className = "slot";
+    slot.dataset.x = x; slot.dataset.y = y;
+    Object.assign(slot.style, {left: g.ox + x * CELL_W + "px", top: g.oy + y * CELL_H + "px"});
+    g.box.appendChild(slot);
+  }
+});
+document.addEventListener("pointermove", (e) => {
+  if (!kvmDrag) return;
+  kvmDrag.ghost.style.left = e.clientX - kvmDrag.dx + "px";
+  kvmDrag.ghost.style.top = e.clientY - kvmDrag.dy + "px";
+  // the nearest free spot under the tile's centre
+  const cx = e.clientX - kvmDrag.dx + TILE_W / 2, cy = e.clientY - kvmDrag.dy + TILE_H / 2;
+  let best = null, bestD = 1e9;
+  document.querySelectorAll("#arrange .slot").forEach((sl) => {
+    const r = sl.getBoundingClientRect(), d = Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy);
+    sl.classList.remove("hot");
+    if (d < bestD) { bestD = d; best = sl; }
+  });
+  kvmDrag.spot = best && bestD < CELL_W * 0.6 ? best : null;
+  if (kvmDrag.spot) kvmDrag.spot.classList.add("hot");
+});
+function endDrag(e) {
+  if (!kvmDrag) return;
+  const d = kvmDrag;
+  kvmDrag = null;
+  d.ghost.remove();
+  d.tile.classList.remove("lifted");
+  document.querySelectorAll("#arrange .slot").forEach((sl) => sl.remove());
+  const grid = {};
+  (state?.kvm?.computers || []).forEach((c) => { if (c.pos) grid[c.id] = c.pos; });
+  if (d.spot) grid[d.id] = [+d.spot.dataset.x, +d.spot.dataset.y];
+  else if ($("kvm-tray") && e && e.type === "pointerup") {
+    const r = $("arrange")?.getBoundingClientRect();
+    const inBox = r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (inBox) { renderKvm(state); return; }         // dropped on no free spot: put it back
+    delete grid[d.id];                                // dropped outside (the tray): take it out
+  }
+  const c = (state?.kvm?.computers || []).find((x) => x.id === d.id);
+  if (c) c.pos = grid[d.id] || null;                  // show it there straight away
+  last.kvm = null;
+  renderKvm(state);
+  api("kvm_grid", JSON.stringify(grid));
+}
+document.addEventListener("pointerup", endDrag);
+document.addEventListener("pointercancel", endDrag);
+
 function renderDevices(s) {
   const asks = s.devices.filter((d) => d.state === "ask" || d.state === "wait");
   paint("requests", asks.map((d) => `<div class="card ask ${d.repair ? "repair" : ""}" style="margin-bottom:12px">
@@ -448,6 +617,7 @@ function renderDevices(s) {
     <div class="grow"><div class="name">Connect from anywhere</div><div class="sub ${a.tone}">${esc(a.text)}</div></div>
     <div class="actions">${a.sign_in ? `<button class="btn primary" data-act="sign_in" ${a.busy ? "disabled" : ""}>${a.busy ? "Opening…" : "Sign in"}</button>` : ""}
       ${a.sign_out ? `<button class="btn quiet" data-act="sign_out">Sign out</button>` : ""}</div>${sw("set_anywhere", a.enabled)}</div>`);
+  renderKvm(s);
 }
 
 function extOf(name) { const m = /\.([a-z0-9]{1,5})$/i.exec(name); return m ? m[1] : "file"; }
@@ -626,6 +796,7 @@ document.addEventListener("click", (e) => {
   const act = el.dataset.act;
   if (act === "answer") api(act, el.dataset.id, el.dataset.v === "1");
   else if (act === "days_step") { const i = $("days"), v = Math.max(1, Math.min(365, (+i.value || 7) + +el.dataset.v)); i.value = v; api("set_cleanup_days", v); }
+  else if (act === "kvm_side") api(act, el.dataset.id, el.dataset.v);
   else if (el.dataset.v !== undefined) api(act, el.dataset.v);
   else if (el.dataset.path) api(act, el.dataset.path);
   else if (el.dataset.id) api(act, el.dataset.id);
@@ -702,6 +873,12 @@ function showSample() {
       latencies: [["auto", "Auto"], ["lowest", "Lowest"], ["low", "Low"], ["balanced", "Balanced"], ["smooth", "Smooth"]],
       recv: {playing: true, text: "Playing from Studio PC · 48 kHz 32-bit float · 45 ms behind", volume: .8, from: "Studio PC"}},
     notch: {available: true, enabled: true}, sendto: {available: false, enabled: true}, debug_log: false,
+    kvm: {available: true, share: true, allow: true, role: "server", following: null, problem: "", needs_accessibility: false,
+      status: "Move the pointer off this screen's edge to reach the computers placed below.", download: "",
+      me: {name: "Sam’s MacBook Air", os: "mac"},
+      computers: [{id: "1", name: "Msi", os: "windows", pos: [1, 0], text: "Connected", on: true, reachable: true},
+                  {id: "2", name: "Studio PC", os: "windows", pos: [2, 0], text: "Connected", on: true, reachable: true},
+                  {id: "6", name: "Office iMac", os: "mac", pos: [0, 1], text: "Connected", on: true, reachable: true}]},
     about: {version: "2026.11.2", id: "3f9c2e1d7b8a4c605e1f2a9d8c7b6e54", port: 50555, paired: ["Msi", "Pixel 9", "Studio PC"]},
     startup: {login: true, login_error: "", tray: true, tray_ok: true, tray_kind: "menubar", tray_note: ""},
   });

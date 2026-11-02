@@ -30,6 +30,7 @@ except ImportError:          # Linux servers: `winlink daemon` runs without a wi
     webview = DOMEventHandler = None
 
 import autostart
+import kvm
 import net
 import sendto
 from cleanup import Cleanup, move_to_trash
@@ -326,6 +327,34 @@ class Api(metaclass=_SafeMethods):
     def set_autostart(self, on):
         self._app.set_autostart(bool(on))
 
+    # keyboard and mouse (Deskflow)
+    def kvm_share(self, on):
+        self._app.kvm.set_share(bool(on))
+
+    def kvm_side(self, pid, side):
+        self._app.kvm.set_side(str(pid), str(side))
+
+    def kvm_grid(self, grid_json):
+        grid = json.loads(grid_json) if isinstance(grid_json, str) else grid_json
+        if isinstance(grid, dict):
+            self._app.kvm.set_grid(grid)
+
+    def kvm_allow(self, on):
+        self._app.kvm.set_allow(bool(on))
+
+    def kvm_get(self):
+        webbrowser.open(kvm.DOWNLOAD_URL)
+        self._app.toast("Install Deskflow, then come back: WinLink finds it by itself.", 8)
+
+    def kvm_recheck(self):
+        self._app.kvm.recheck()
+        if not self._app.kvm.core:
+            self._app.toast("Deskflow isn't installed yet.")
+
+    def kvm_accessibility(self):
+        if IS_MAC:
+            subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])
+
     def set_tray(self, on):
         self._app.set_tray(bool(on))
 
@@ -404,6 +433,7 @@ class App:
                                             lambda text, st: self.events.put(("audio_out", text, st)),
                                             quality=lambda: self.settings["audio_quality"])
         self.clip_problem = ""         # Linux: why the clipboard can't be shared (a tool is missing)
+        self.kvm = kvm.Sharing(self.node, self.settings, os.path.join(net.config_dir(), "kvm"), self.dirty.set)
         self.send_fix = None           # "privacy" when macOS needs the person to allow capturing sound
 
     # ------------------------------------------------------------ run
@@ -490,6 +520,10 @@ class App:
 
     def _quit(self):
         net.log.info("WinLink quitting")
+        try:
+            self.kvm.stop_all()                  # Deskflow's engine is our child: don't leave it running
+        except Exception:  # noqa: BLE001
+            pass
         logging.shutdown()                       # flush the log file
         os._exit(0)
 
@@ -617,8 +651,12 @@ class App:
                     net.log.exception("handling %s", ev[0])
             self.dirty.set()
 
+    def _on_kvm_msg(self, peer, msg):
+        self.kvm.on_message(peer, msg)
+
     def _on_peers(self):
         self._maybe_start_audio()
+        self.kvm.refresh()
         self._sync_sendto()
         if self.notch is not None:
             self.notch.refresh()
@@ -777,6 +815,7 @@ class App:
             "sendto": {"available": IS_WIN or IS_LINUX, "enabled": bool(self.settings["sendto_menu"]),
                        "status": self.sendto_menu.status},
             "debug_log": bool(self.settings["debug_log"]),
+            "kvm": self.kvm.state(node.connected()),
             "about": {"version": net.VERSION, "id": node.id, "port": net.PORT,
                       "paired": sorted(self.settings["trusted"].values(), key=str.lower)},
             "startup": {"login": autostart.enabled(), "login_error": self.login_error,

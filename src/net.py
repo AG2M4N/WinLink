@@ -1184,6 +1184,8 @@ class Node:
                 elif kind == "cancel" and isinstance(msg.get("batch"), str) \
                         and re.fullmatch(r"[0-9a-f]{32}", msg["batch"]):
                     self._on_cancel_msg(peer, msg["batch"])
+                elif kind == "kvm":                 # keyboard and mouse sharing (kvm.py) sets itself up
+                    self.emit("kvm_msg", peer, msg)
                 elif kind == "bye":
                     peer.remote_paused = True
                     break
