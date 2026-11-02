@@ -7,6 +7,13 @@
 //	<token> LOGIN            -> start interactive sign-in (URL shows up in STATUS)
 //	<token> LOGOUT           -> sign out and erase this device's stored identity
 //	<token> DIAL host:port   -> "OK" then a raw pipe to that tailnet address
+//	<token> TUNNEL host:port -> "OK <local port>": 127.0.0.1:<local port> leads to that tailnet
+//	                            address, for as long as this control connection stays open
+//	<token> EXPOSE port      -> "OK": tailnet connections to <port> on this device go to
+//	                            127.0.0.1:<port>, for as long as this connection stays open
+//
+// TUNNEL and EXPOSE carry keyboard and mouse sharing (Deskflow, which can't use a tailnet
+// that lives inside WinLink): the pointer's traffic stays in Go, off WinLink's Python threads.
 //
 // Tailnet connections to this device's WinLink port are forwarded to WinLink's
 // local listener (-forward), prefixed with "FROM <ip>\n" so WinLink knows who
@@ -25,6 +32,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,6 +77,10 @@ func main() {
 		os.Exit(1)
 	}
 	srv := &tsnet.Server{
+		// A fixed UDP port (not the Tailscale app's 41641) that firewalls and routers can
+		// allow, so devices connect directly more often instead of through a relay server.
+		// If it's taken, Tailscale picks another.
+		Port:     41642,
 		Dir:      *dir,
 		Store:    store,
 		Hostname: *hostname,
@@ -214,5 +226,71 @@ func handle(c net.Conn, srv *tsnet.Server, store *secureStore, token string) {
 		defer r.Close()
 		fmt.Fprintln(c, "OK")
 		pipe(c, r)
+	case "TUNNEL":
+		if len(fields) < 3 {
+			return
+		}
+		target := fields[2]
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			fmt.Fprintf(c, "ERR %v\n", err)
+			return
+		}
+		defer ln.Close()
+		go func() {
+			for {
+				l, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer l.Close()
+					dctx, dcancel := context.WithTimeout(context.Background(), 10*time.Second)
+					r, err := srv.Dial(dctx, "tcp", target)
+					dcancel()
+					if err != nil {
+						return
+					}
+					defer r.Close()
+					pipe(l, r)
+				}()
+			}
+		}()
+		fmt.Fprintf(c, "OK %d\n", ln.Addr().(*net.TCPAddr).Port)
+		io.Copy(io.Discard, c) // until WinLink closes it
+	case "EXPOSE":
+		if len(fields) < 3 {
+			return
+		}
+		port, err := strconv.Atoi(fields[2])
+		if err != nil || port <= 0 || port > 65535 {
+			fmt.Fprintln(c, "ERR bad port")
+			return
+		}
+		ln, err := srv.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			fmt.Fprintf(c, "ERR %v\n", err)
+			return
+		}
+		defer ln.Close()
+		go func() {
+			for {
+				t, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer t.Close()
+					l, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 5*time.Second)
+					if err != nil {
+						return
+					}
+					defer l.Close()
+					pipe(t, l)
+				}()
+			}
+		}()
+		fmt.Fprintln(c, "OK")
+		io.Copy(io.Discard, c)
 	}
 }

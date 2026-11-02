@@ -482,12 +482,19 @@ class Sharing:
         self._find()
         self.role = None             # "server" | "client" | None
         self.server_peer = None      # client: whose keyboard and mouse we follow
-        self.relay = None            # client: Relay carrying Deskflow's connection
-        self.clients = {}            # server: peer id -> {"fp", "screen", "state", "text"}
+        self.relay = None            # client: Relay carrying Deskflow's connection (the fallback)
+        self.tunnel = None           # client: the Tailscale helper's tunnel handle
+        self.exposed = None          # server: the Tailscale helper's EXPOSE handle
+        self.joining = None          # client: {"peer", "fp", "screen", "paths", "i", "joined"}
+        self.path = None             # client: how Deskflow reaches the server ("direct", "tunnel", "relay")
+        self.bad_paths = {}          # (peer id, path) -> when it last failed to connect
+        self.rtt = {}                # peer id -> round trip in ms (measured over WinLink's link)
+        self.clients = {}            # server: peer id -> {"fp", "screen", "state", "text", "path"}
         self.status, self.problem = "", ""
         self.applied = None
         self.lock = threading.RLock()
         self.retries = 0
+        threading.Thread(target=self._measure, daemon=True, name="kvm delay").start()
 
     # ---- settings
     @property
@@ -593,6 +600,7 @@ class Sharing:
             if self.role == "server" and self.engine is not None:
                 self.engine.stop()
                 self.role = None
+            self._expose(False)
             self.applied = None
             self.status = ("Place a computer next to this one to start." if not grid else
                            "Waiting for the other computers to answer.")
@@ -606,6 +614,7 @@ class Sharing:
         self.applied = key
         self.role = "server"
         self.engine.start("server")
+        self._expose(True)
         self.status = "Move the pointer off this screen's edge to reach the computers placed below."
 
     def _stop_server(self):
@@ -619,7 +628,24 @@ class Sharing:
             if self.role == "server" and self.engine is not None:
                 self.engine.stop()
                 self.role = None
+            self._expose(False)
             self.status = ""
+
+    def _expose(self, on):
+        """Server: let computers on WinLink's built-in Tailscale reach our Deskflow server through
+        the helper (see Sharing._paths). Deskflow still only accepts the fingerprints we trust."""
+        if self.exposed is not None:
+            try:
+                self.exposed.close()
+            except OSError:
+                pass
+            self.exposed = None
+        emb = self.node.embedded
+        if on and emb is not None and emb.running:
+            try:
+                self.exposed = emb.expose(PORT)
+            except OSError as e:
+                log.info("keyboard and mouse: can't offer it over the built-in Tailscale: %s", e)
 
     # ---- messages from other computers
     def on_message(self, peer, msg):
@@ -637,6 +663,12 @@ class Sharing:
                     self._apply_server()
             elif op == "dialback" and peer.id in self.clients and re.fullmatch(r"[0-9a-f]{16}", str(msg.get("tid", ""))):
                 threading.Thread(target=self._dial_back, args=(peer, msg["tid"]), daemon=True, name="kvm dial back").start()
+            elif op == "path" and peer.id in self.clients and msg.get("path") in ("direct", "tunnel", "relay"):
+                self.clients[peer.id]["path"] = msg["path"]
+            elif op == "ping":
+                self._send(peer, {"op": "pong", "t": msg.get("t")})
+            elif op == "pong" and isinstance(msg.get("t"), (int, float)):
+                self.rtt[peer.id] = max(0.0, (time.monotonic() - msg["t"]) * 1000)
             elif op == "no" and peer.id in self.clients:
                 self.clients[peer.id].update(state="no", text=str(msg.get("reason", ""))[:160])
         self.on_change()
@@ -655,14 +687,103 @@ class Sharing:
         if why:
             self._send(peer, {"op": "no", "reason": why})
             return
-        self._close_relay()
-        self.relay = Relay(self.node, peer, lambda tid: self._send(peer, {"op": "dialback", "tid": tid}))
         self.files.trust("servers", [fp])
-        self.files.write_settings(screen, remote_host="127.0.0.1", port=self.relay.port)
         self.server_peer, self.role = peer, "client"
-        self.engine.start("client")
         self.status = f"Following {peer.name}'s keyboard and mouse."
+        self.joining = {"peer": peer, "screen": screen, "paths": self._paths(peer), "i": -1, "joined": False}
+        self._next_path()
         self._send(peer, {"op": "hello", "fp": self.files.fingerprint()})
+
+    PATH_WAIT = 12   # seconds for Deskflow to connect along a path before trying the next one
+
+    def _paths(self, peer):
+        """How Deskflow could reach the sharing computer, quickest first:
+          direct  straight to the address WinLink's own link uses (same Wi-Fi, or the Tailscale app);
+          tunnel  WinLink's built-in Tailscale, carried by its helper (no Python in between);
+          relay   over WinLink's link, dialing either way (works on one-way networks, a bit slower).
+        A path that recently failed with this computer is skipped, except the relay."""
+        ctrl, ip, route = peer.control, "", "wifi"
+        if ctrl is not None:
+            route = ctrl.route
+            try:
+                ip = ctrl.chan.getpeername()[0]          # Control wraps the encrypted Channel
+            except (OSError, AttributeError, IndexError, TypeError):
+                ip = ""
+        if ip.startswith("::ffff:"):
+            ip = ip[7:]
+        # over the built-in Tailscale, WinLink's link comes from the helper on this computer
+        builtin = route == "tailscale" and (ip.startswith("127.") or ip == "::1")
+        out = []
+        if ip and not builtin and "%" not in ip:
+            out.append(("direct", ip))
+        ts = [a[3:] for a in peer.addresses() if a.startswith("ts:")]
+        emb = self.node.embedded
+        if builtin and ts and emb is not None and emb.running:
+            out.append(("tunnel", ts[0]))
+        now = time.time()
+        out = [p for p in out if now - self.bad_paths.get((peer.id, p[0]), 0) > 600]
+        return out + [("relay", None)]
+
+    def _next_path(self):
+        """Client: (re)start Deskflow along the next path."""
+        j = self.joining
+        if j is None or self.role != "client":
+            return
+        j["i"] += 1
+        if j["i"] >= len(j["paths"]):
+            j["i"] = len(j["paths"]) - 1            # the relay: keep trying it (Deskflow retries)
+        kind, host = j["paths"][j["i"]]
+        peer = j["peer"]
+        self._close_relay()
+        port = PORT
+        try:
+            if kind == "tunnel":
+                self.tunnel, port = self.node.embedded.tunnel(host, PORT)
+                host = "127.0.0.1"
+            elif kind == "relay":
+                self.relay = Relay(self.node, peer, lambda tid: self._send(peer, {"op": "dialback", "tid": tid}))
+                host, port = "127.0.0.1", self.relay.port
+        except (OSError, AttributeError) as e:
+            log.info("keyboard and mouse: %s path unavailable: %s", kind, e)
+            self.bad_paths[(peer.id, kind)] = time.time()
+            return self._next_path()
+        self.path = kind
+        j["joined"] = False
+        self.files.write_settings(j["screen"], remote_host=host, port=port)
+        self.engine.start("client")
+        log.info("keyboard and mouse: reaching %s %s", peer.name,
+                 {"direct": f"directly at {host}", "tunnel": "through the built-in Tailscale",
+                  "relay": "through WinLink's link"}[kind])
+        self._send(peer, {"op": "path", "path": kind})
+        if kind != "relay":
+            attempt = j["i"]
+            threading.Timer(self.PATH_WAIT, self._path_check, args=(j, attempt)).start()
+
+    def _path_check(self, j, attempt):
+        with self.lock:
+            if self.joining is not j or j["i"] != attempt or j["joined"] or self.role != "client":
+                return
+            kind = j["paths"][attempt][0]
+            log.info("keyboard and mouse: %s didn't connect %s; trying the next way",
+                     j["peer"].name, {"direct": "directly", "tunnel": "through the built-in Tailscale"}.get(kind, kind))
+            self.bad_paths[(j["peer"].id, kind)] = time.time()
+            self._next_path()
+        self.on_change()
+
+    def _measure(self):
+        """Every few seconds, the round trip to the computers we share with or follow."""
+        while True:
+            time.sleep(3)
+            with self.lock:
+                if self.role == "server":
+                    peers = [self.node.peers.get(pid) for pid, c in self.clients.items() if c.get("state") == "on"]
+                elif self.role == "client":
+                    peers = [self.server_peer]
+                else:
+                    peers = []
+            for peer in peers:
+                if peer is not None and peer.control is not None:
+                    self._send(peer, {"op": "ping", "t": time.monotonic()})
 
     def stop_client(self, why=""):
         with self.lock:
@@ -671,6 +792,7 @@ class Sharing:
                 log.info("keyboard and mouse: client stopped%s", f" ({why})" if why else "")
             if self.role == "client":
                 self.role, self.server_peer, self.status = None, None, why
+            self.joining, self.path = None, None
             self._close_relay()
         self.on_change()
 
@@ -678,6 +800,12 @@ class Sharing:
         if self.relay is not None:
             self.relay.close()
             self.relay = None
+        if self.tunnel is not None:
+            try:
+                self.tunnel.close()
+            except OSError:
+                pass
+            self.tunnel = None
 
     def tunnel_in(self, peer, chan):
         """A "kvm" connection (see Relay). Runs on the connection's thread until it closes."""
@@ -772,6 +900,8 @@ class Sharing:
                             self.retries = 0
                             self.problem = ""
             elif kind == "joined" and self.role == "client":
+                if self.joining is not None:
+                    self.joining["joined"] = True
                 self.status = f"Following {self.server_peer.name if self.server_peer else 'the other computer'}'s keyboard and mouse."
                 self.problem = ""
             elif kind == "permission":
@@ -793,8 +923,30 @@ class Sharing:
     def stop_all(self):
         if self.engine is not None:
             self.engine.stop()
+        self._expose(False)
+        self._close_relay()
 
     # ---- for the window
+    def describe(self, peer, path):
+        """"18 ms · Wi-Fi" / "62 ms · Tailscale, relayed (fra)": the pointer's delay and how it travels."""
+        if peer is None:
+            return ""
+        ctrl = peer.control
+        over = "Tailscale" if (path == "tunnel" or (ctrl is not None and ctrl.route == "tailscale")) else "Wi-Fi"
+        if over == "Tailscale":
+            ts = {a[3:] for a in peer.addresses() if a.startswith("ts:")}
+            for d in self.node.anywhere.get("devices") or []:
+                if ts & set(d.get("ips") or []):
+                    if d.get("direct"):
+                        over += ", direct"
+                    elif d.get("relay"):
+                        over += f", relayed ({d['relay']})"     # see README: Keyboard and mouse
+                    break
+        if path == "relay":
+            over += " through WinLink"
+        rtt = self.rtt.get(peer.id)
+        return " · ".join(x for x in (f"{rtt:.0f} ms" if rtt is not None else "", over) if x)
+
     def state(self, connected):
         ax = mac_accessibility_ok()
         grid = self.conf.get("grid", {})
@@ -807,6 +959,8 @@ class Sharing:
             c = self.clients.get(p.id, {})
             text = {"on": "Connected", "starting": "Starting…",
                     "waiting": "Waiting for it to answer", "no": c.get("text", "")}.get(c.get("state"), "")
+            if c.get("state") == "on":
+                text = " · ".join(x for x in ("Connected", self.describe(p, c.get("path"))) if x)
             pos = grid.get(p.id)
             if pos is not None and p.id not in near:
                 text = "Not touching any screen: the pointer can't get there"
@@ -822,6 +976,7 @@ class Sharing:
             "role": self.role,
             "me": {"name": self.node.name, "os": "mac" if IS_MAC else "windows" if IS_WIN else "linux"},
             "following": self.server_peer.name if self.role == "client" and self.server_peer else None,
+            "path": self.describe(self.server_peer, self.path) if self.role == "client" and self.server_peer else "",
             "computers": computers,
             "status": self.status,
             "problem": self.problem,

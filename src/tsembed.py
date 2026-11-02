@@ -158,3 +158,33 @@ class Embedded:
             raise OSError(reply.decode(errors="replace").strip() or "Tailscale dial failed")
         sock.settimeout(None)
         return sock
+
+    def _held(self, command):
+        """A command that lasts as long as its control connection: (socket, reply words)."""
+        if not self.running:
+            raise OSError("Tailscale is off")
+        sock = self._request(command, timeout=10)
+        reply = b""
+        while not reply.endswith(b"\n"):
+            b = sock.recv(1)
+            if not b:
+                break
+            reply += b
+        words = reply.decode(errors="replace").split()
+        if not words or words[0] != "OK":
+            sock.close()
+            raise OSError(" ".join(words[1:]) or f"Tailscale helper refused {command.split()[0]}")
+        sock.settimeout(None)
+        return sock, words[1:]
+
+    def tunnel(self, host, port):
+        """127.0.0.1:<local port> leading to host:port on the tailnet, carried by the helper itself.
+        Returns (handle, local port); closing the handle ends it."""
+        target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+        sock, words = self._held(f"TUNNEL {target}")
+        return sock, int(words[0])
+
+    def expose(self, port):
+        """Tailnet connections to `port` on this device reach 127.0.0.1:port. Returns a handle;
+        closing it ends it."""
+        return self._held(f"EXPOSE {int(port)}")[0]

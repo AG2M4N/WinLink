@@ -192,9 +192,14 @@ isn't touched.
 - On a **Mac**, allow WinLink under *Privacy & Security → Accessibility* (WinLink shows a button).
 - The other computers follow automatically; turn off *Let other computers control this one* to refuse.
 - It works wherever WinLink connects: same Wi-Fi, the Tailscale app, WinLink's built-in Tailscale, and
-  networks that only let one computer reach the other. Deskflow's connection travels over WinLink's
-  encrypted link (Deskflow's own TLS still runs inside it). Away from the same network, the pointer lags
-  by the round trip between the computers.
+  networks that only let one computer reach the other. WinLink picks the quickest way: straight to the
+  other computer, else through the built-in Tailscale's helper, else over WinLink's own link (dialing
+  either way). Deskflow's TLS runs end to end in every case.
+- Each computer shows the pointer's delay and how it travels, e.g. *Connected · 4 ms · Wi-Fi* or
+  *38 ms · Tailscale, direct*. **"Tailscale, relayed"** means Tailscale couldn't connect the two
+  computers directly and goes through one of its relay servers, which is what makes the pointer lag:
+  allow WinLink (and its `linkts` helper) through the firewall when asked, or let UDP port 41642 in;
+  on the same Wi-Fi, check the router doesn't isolate devices from each other.
 
 ### Connect from anywhere
 1. Switch on **Connect from anywhere** on each device (Devices page; on Android, *Away from home*).
@@ -288,7 +293,9 @@ sh install_linux.sh             # Linux: installs for your user
 The downloads on the Releases page are built by [`.github/workflows/release.yml`](.github/workflows/release.yml)
 on GitHub's machines: it compiles Deskflow's engine from its source for Mac and Windows, builds WinLink
 for every system and packages it ([`packaging/`](packaging): the Windows installer, the Mac disk image,
-the Linux packages). Push a tag `v<version>` (matching `VERSION` in `src/net.py`) to make a draft release.
+the Linux packages) and the Android APK. Push a tag `v<version>` (matching `VERSION` in `src/net.py`) to
+make a draft release. The APK is signed with a key kept in the repository's secrets; make it once with
+`sh packaging/android/make_signing_key.sh`.
 
 Run from source on a Mac without building:
 `python3 -m venv .venv && .venv/bin/pip install -r requirements-mac.txt && .venv/bin/python src/link.py`
@@ -299,7 +306,7 @@ Run from source on a Mac without building:
 cd mobile
 npm install
 sh ../helper/build_android.sh   # the Tailscale helper for Android
-npx eas build -p android --profile preview      # a standalone APK
+npx eas build -p android --profile preview      # a standalone APK (releases build it on GitHub instead)
 npx eas build -p android --profile development  # a development build, then: npx expo start --dev-client
 ```
 

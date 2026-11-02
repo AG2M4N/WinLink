@@ -89,7 +89,25 @@ for _ in range(50):
     time.sleep(0.1)
 check("taking B out stops its client", kb.role is None, kb.status)
 
-# Deskflow always goes through WinLink's link: check it gets through when only one side can dial
+# The quickest path first: Deskflow straight to the other computer
+check("the direct path is used first", kb.path is None)   # B isn't following now; checked again below
+ka.set_side(pB.id, "right")
+for _ in range(150):
+    if ka.clients.get(pB.id, {}).get("state") == "on": break
+    time.sleep(0.1)
+time.sleep(4)                                   # a round-trip measurement or two
+desc = ka.state([pB])["computers"][0]["text"]
+check("... direct, and the window shows the delay", kb.path == "direct" and " ms" in desc, f"{kb.path}: {desc}")
+ka.set_side(pB.id, "")
+for _ in range(50):
+    if kb.role is None: break
+    time.sleep(0.1)
+
+# A direct path that doesn't connect (here: an address nobody listens on) falls back to the relay,
+# which goes over WinLink's link and dials either way
+real_paths = kb._paths
+kb._paths = lambda peer: [("direct", "127.0.0.2"), ("relay", None)]
+kb.PATH_WAIT = 4
 def one_way(blocked, label):
     real = blocked.dial
     def dial(peer, kind, *a, **k):
@@ -98,20 +116,22 @@ def one_way(blocked, label):
         return real(peer, kind, *a, **k)
     blocked.dial = dial
     ka.set_side(pB.id, "right")
-    for _ in range(200):
+    for _ in range(300):
         if ka.clients.get(pB.id, {}).get("state") == "on": break
         time.sleep(0.1)
-    check(label, ka.clients.get(pB.id, {}).get("state") == "on", ka.clients.get(pB.id, {}).get("state"))
+    check(label, ka.clients.get(pB.id, {}).get("state") == "on" and kb.path == "relay",
+          f'{ka.clients.get(pB.id, {}).get("state")}, path {kb.path}')
     blocked.dial = real
     ka.set_side(pB.id, "")
     for _ in range(50):
         if kb.role is None: break
         time.sleep(0.1)
 B.peers[A.id].port = 51990     # B dials A here: in one process B learned the shared module's port
-one_way(B, "the follower can't dial out: connected by dialing back")
-one_way(A, "the sharer can't dial out: connected directly")
+one_way(B, "direct fails, follower can't dial out: relay, by dialing back")
+one_way(A, "direct fails, sharer can't dial out: relay, follower dialing")
 check("... Deskflow's client points at the relay", "remoteHost=127.0.0.1" in open(kb.files.settings).read())
 check("... and stopping closes the relay", kb.role is None and kb.relay is None)
+kb._paths = real_paths
 
 kb.set_allow(False)                         # B refuses from now on
 ka.set_side(pB.id, "left")
