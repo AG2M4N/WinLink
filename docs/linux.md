@@ -19,16 +19,29 @@ receive folders, share sound and join your tailnet.
 
 ## Install
 
-Download **WinLink-for-Linux.zip** from the [Releases page](../../../releases) (or clone this repo and
-build the helper with `sh helper/build_all.sh`), then:
+Download the package for your system from the [Releases page](../../../releases). One package has
+everything: the window, headless mode and the `winlink` command.
 
 ```sh
-unzip WinLink-for-Linux.zip -d WinLink && cd WinLink
+sudo apt install ./winlink_*_amd64.deb      # Ubuntu, Debian, Mint, Pop!_OS (arm64.deb on ARM)
+sudo dnf install ./winlink-*.x86_64.rpm     # Fedora (aarch64.rpm on ARM)
+```
+
+The package manager installs what WinLink needs (Python, GTK and WebKitGTK for the window, PortAudio,
+`parec`, ...). It puts WinLink in `/usr/lib/winlink`, the `winlink` command in `/usr/bin` and WinLink in
+your apps menu. Start at login is in WinLink's Settings (without a desktop: `winlink service install`); the firewall is
+[below](#firewall).
+
+**Other distributions** (Arch, Manjaro, openSUSE...), or to install for your user only: clone this repo
+(or download the source code from the Releases page), build the helper with `sh helper/build_all.sh`
+if you cloned it, then:
+
+```sh
 sh install_linux.sh            # asks before installing packages with sudo
 sh install_linux.sh --yes      # no questions (packages, start at login, firewall)
 ```
 
-The installer:
+`install_linux.sh`:
 1. installs the system packages WinLink needs, with apt, dnf, pacman or zypper (Python 3.10+, GTK and
    WebKitGTK for the window, PortAudio, `parec`, xclip / wl-clipboard, AppIndicator, secret-tool);
 2. copies WinLink to `~/.local/share/winlink` with its own Python environment;
@@ -80,7 +93,7 @@ applies; Linux specifics:
 | **Tray** | AppIndicator (KDE, Ubuntu, Cinnamon...) or the classic tray (Xfce, MATE). Vanilla GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension. Minimising hides WinLink to the tray. |
 | **Trash** | Auto-clean and *Delete* move files to the desktop's Trash (`~/.local/share/Trash`). |
 | **Built-in Tailscale** | Its key is kept in your keyring through `secret-tool`, or in a private file if there's no keyring. |
-| **Keyboard and mouse** | Install Deskflow from your distribution or its [releases](https://github.com/deskflow/deskflow/releases/latest) (`deskflow-core` must be on the `PATH`; the Flatpak isn't used). X11 works fully; on Wayland the desktop asks once to allow remote input. |
+| **Keyboard and mouse** | Install Deskflow 1.27 or newer from your distribution or its [releases](https://github.com/deskflow/deskflow/releases/latest), which has packages for current Debian, Ubuntu, Fedora, openSUSE and Arch (`deskflow-core` must be on the `PATH`; the Flatpak isn't used). On Mac and Windows it's built into WinLink, but its Linux engine needs libei 1.3+, which only current distributions have, so it's installed separately here. X11 works fully; on Wayland the desktop asks once to allow remote input. |
 | **Awake** | While sound plays or a transfer runs, WinLink holds a `systemd-inhibit` lock so the PC doesn't suspend. |
 
 ## Without a desktop
@@ -269,7 +282,9 @@ sudo firewall-cmd --permanent --add-port=50555/tcp --add-port=50556/udp --add-se
 ## Update and remove
 
 ```sh
-sh install_linux.sh              # from a newer zip: updates in place, keeps settings and pairings
-sh install_linux.sh --uninstall  # removes the app, launcher, menu entries and service
+sudo apt install ./winlink_*.deb   # update: install the newer package (settings and pairings stay)
+sudo apt remove winlink            # remove (Fedora: sudo dnf remove winlink)
+sh install_linux.sh                # with install_linux.sh: from newer source, updates in place
+sh install_linux.sh --uninstall    # ...and removes the app, launcher, menu entries and service
 rm -rf ~/.config/WinLink         # also forget settings and pairings
 ```

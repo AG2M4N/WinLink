@@ -349,7 +349,8 @@ class Api(metaclass=_SafeMethods):
     def kvm_recheck(self):
         self._app.kvm.recheck()
         if not self._app.kvm.core:
-            self._app.toast("Deskflow isn't installed yet.")
+            k = self._app.kvm
+            self._app.toast(f"Deskflow {k.outdated} is still too old." if k.outdated else "Deskflow isn't installed yet.")
 
     def kvm_accessibility(self):
         if IS_MAC:
@@ -434,6 +435,7 @@ class App:
                                             quality=lambda: self.settings["audio_quality"])
         self.clip_problem = ""         # Linux: why the clipboard can't be shared (a tool is missing)
         self.kvm = kvm.Sharing(self.node, self.settings, os.path.join(net.config_dir(), "kvm"), self.dirty.set)
+        self.node.on_kvm = self.kvm.tunnel_in
         self.send_fix = None           # "privacy" when macOS needs the person to allow capturing sound
 
     # ------------------------------------------------------------ run

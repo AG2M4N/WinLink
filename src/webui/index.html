@@ -445,8 +445,9 @@ function renderKvm(s) {
   if (!k.available) {
     h = `<div class="row"><div class="icon">${I.keyboard}</div>
       <div class="grow"><div class="name">One keyboard and mouse for all your computers</div>
-      <div class="sub">Move the pointer off the edge of this screen and keep working on the next computer. Uses Deskflow (free, open source): install it on each computer and WinLink sets everything up.</div></div>
-      <div class="actions"><button class="btn primary" data-act="kvm_get">Get Deskflow</button><button class="btn quiet" data-act="kvm_recheck">I've installed it</button></div></div>`;
+      <div class="sub">${k.outdated ? `This computer has Deskflow ${esc(k.outdated)}; WinLink needs ${esc(k.needs)} or newer. Update it, then come back.`
+        : "Move the pointer off the edge of this screen and keep working on the next computer. Uses Deskflow (free, open source): install it on each computer and WinLink sets everything up."}</div></div>
+      <div class="actions"><button class="btn primary" data-act="kvm_get">${k.outdated ? "Update Deskflow" : "Get Deskflow"}</button><button class="btn quiet" data-act="kvm_recheck">${k.outdated ? "I've updated it" : "I've installed it"}</button></div></div>`;
   } else {
     const sub = k.role === "client" ? `Following ${esc(k.following)}'s keyboard and mouse.`
       : k.share ? esc(k.status || "Drag your other computers next to this one.") : "Use it on your other computers: move the pointer off this screen's edge.";
@@ -879,7 +880,7 @@ function showSample() {
       computers: [{id: "1", name: "Msi", os: "windows", pos: [1, 0], text: "Connected", on: true, reachable: true},
                   {id: "2", name: "Studio PC", os: "windows", pos: [2, 0], text: "Connected", on: true, reachable: true},
                   {id: "6", name: "Office iMac", os: "mac", pos: [0, 1], text: "Connected", on: true, reachable: true}]},
-    about: {version: "2026.11.3", id: "3f9c2e1d7b8a4c605e1f2a9d8c7b6e54", port: 50555, paired: ["Msi", "Pixel 9", "Studio PC"]},
+    about: {version: "2026.11.4", id: "3f9c2e1d7b8a4c605e1f2a9d8c7b6e54", port: 50555, paired: ["Msi", "Pixel 9", "Studio PC"]},
     startup: {login: true, login_error: "", tray: true, tray_ok: true, tray_kind: "menubar", tray_note: ""},
   });
   addLogs([

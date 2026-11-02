@@ -37,7 +37,7 @@ import secure
 import tailnet
 import tsembed
 
-VERSION = "2026.11.3"
+VERSION = "2026.11.4"
 PORT = int(os.environ.get("LINK_PORT", 50555))
 PROBE_PORT = int(os.environ.get("LINK_PROBE_PORT", 50555))   # WinLink's port on other devices
 BEACON_PORT = 50556
@@ -366,6 +366,7 @@ class Node:
         self.peers = {}
         self.lock = threading.RLock()
         self.on_audio = None   # callable(peer, header, chan) on devices that can play sound
+        self.on_kvm = None     # callable(peer, chan): Deskflow's connection carried over our link (kvm.py)
         self.downloads = downloads_dir()
         self.tailscale = "missing"   # the Tailscale app: missing | stopped | on
         # Built-in Tailscale ("Connect from anywhere"):
@@ -1044,7 +1045,7 @@ class Node:
                 secure.send_json(sock, {"app": "link", "id": self.id, "name": self.name,
                                         "os": OS_NAME, "port": PORT})
                 return
-            if kind not in ("control", "file", "audio"):
+            if kind not in ("control", "file", "audio", "kvm"):
                 raise ValueError("unknown request")
             hello = clean_hello(hello)
             peer = self._peer_for(hello, addr)
@@ -1062,6 +1063,8 @@ class Node:
                 params = clean_audio(chan.recv_json())
                 chan.settimeout(30)                  # senders send a keep-alive every 5 s of silence
                 self.on_audio(peer, params, chan)
+            elif kind == "kvm" and self.on_kvm is not None:
+                self.on_kvm(peer, chan)
         except (OSError, ValueError, ConnectionError, KeyError, TypeError) as e:
             log.debug("connection from %s ended: %s", ip, e)
         except Exception:  # noqa: BLE001

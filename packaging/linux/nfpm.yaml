@@ -1,0 +1,89 @@
+# WinLink's Linux packages (.deb and .rpm), made by nfpm (https://nfpm.goreleaser.com) in
+# .github/workflows/release.yml. One package has everything: the window, headless mode
+# (winlink daemon / winlink service install) and the winlink command.
+# GTK, WebKit, cryptography and numpy come from the distribution; the small pure-Python
+# libraries WinLink also needs ship inside it (vendor/), so installing needs no internet.
+name: winlink
+version: ${WINLINK_VERSION}
+arch: ${PKG_ARCH}
+platform: linux
+section: net
+priority: optional
+maintainer: WinLink <177298244+AG2M4N@users.noreply.github.com>
+homepage: https://github.com/AG2M4N/winlink
+license: GPL-3.0-only
+description: |
+  Clipboard, files, sound, keyboard and mouse between your devices
+  WinLink shares the clipboard, sends files, plays sound and shares one keyboard and mouse
+  between your Macs, PCs, Linux computers and phones, on the same Wi-Fi or anywhere
+  (built-in Tailscale). Includes headless mode (winlink daemon) and the winlink command.
+
+contents:
+  - src: ./stage/src
+    dst: /usr/lib/winlink/src
+    type: tree
+  - src: ./stage/vendor
+    dst: /usr/lib/winlink/vendor
+    type: tree
+  - src: ./stage/bin
+    dst: /usr/lib/winlink/bin
+    type: tree
+  - src: ./packaging/linux/winlink
+    dst: /usr/bin/winlink
+    file_info: {mode: 0755}
+  - src: ./packaging/linux/winlink.desktop
+    dst: /usr/share/applications/winlink.desktop
+  - src: ./assets/WinLink.png
+    dst: /usr/share/icons/hicolor/256x256/apps/winlink.png
+  - src: ./docs/linux.md
+    dst: /usr/share/doc/winlink/README.md
+  - src: ./LICENSE
+    dst: /usr/share/doc/winlink/copyright
+
+overrides:
+  deb:
+    depends:
+      - python3 (>= 3.10)
+      - python3-gi
+      - python3-gi-cairo
+      - gir1.2-gtk-3.0
+      - gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0
+      - python3-cryptography
+      - python3-numpy
+      - python3-pil
+      - python3-cffi
+      - libportaudio2
+      - pulseaudio-utils
+      - xdg-utils
+      - libxfixes3
+    recommends:
+      - gir1.2-ayatanaappindicator3-0.1
+      - xclip
+      - wl-clipboard
+      - libsecret-tools
+      - libnotify-bin
+      - deskflow
+  rpm:
+    depends:
+      - python3 >= 3.10
+      - python3-gobject
+      - gtk3
+      - webkit2gtk4.1
+      - python3-cryptography
+      - python3-numpy
+      - python3-pillow
+      - python3-cffi
+      - portaudio
+      - pulseaudio-utils
+      - xdg-utils
+      - libXfixes
+    recommends:
+      - libayatana-appindicator-gtk3
+      - xclip
+      - wl-clipboard
+      - libsecret
+      - libnotify
+      - deskflow
+
+scripts:
+  postinstall: ./packaging/linux/postinstall.sh

@@ -5,6 +5,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_VENDOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "vendor")
+if os.path.isdir(_VENDOR):                 # the Linux packages: pure-Python libraries shipped with WinLink
+    sys.path.insert(1, os.path.normpath(_VENDOR))
 
 import net  # noqa: E402
 import sendto  # noqa: E402

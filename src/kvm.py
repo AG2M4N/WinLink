@@ -16,7 +16,9 @@ import datetime
 import logging
 import os
 import re
+import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -25,7 +27,7 @@ import time
 log = logging.getLogger("winlink")
 IS_WIN = os.name == "nt"
 IS_MAC = sys.platform == "darwin"
-PORT = 24810            # not Deskflow's usual 24800, so a Deskflow you run yourself isn't disturbed
+PORT = int(os.environ.get("LINK_KVM_PORT", 24810))   # not Deskflow's usual 24800: yours isn't disturbed
 SIDES = ("left", "right", "up", "down")
 STEP = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
 GRID_LIMIT = 6          # positions -6..6 on each axis: plenty of desk
@@ -59,11 +61,36 @@ def reachable(positions, start):
 DOWNLOAD_URL = "https://github.com/deskflow/deskflow/releases/latest"
 
 
+MIN_VERSION = (1, 27)   # the settings layout WinLink writes, and --new-instance
+
+
+def bundled_core():
+    """The engine that ships inside WinLink (built from Deskflow's source by WinLink's release
+    workflow), or None (Linux, or a build from source without it)."""
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    here = os.path.dirname(os.path.abspath(__file__))
+    if IS_MAC:
+        places = [os.path.join(exe_dir, "..", "Library", "Deskflow.app", "Contents", "MacOS", "deskflow-core"),
+                  os.path.join(here, "..", "bin", "Deskflow.app", "Contents", "MacOS", "deskflow-core")]
+    elif IS_WIN:
+        places = [os.path.join(exe_dir, "deskflow", "deskflow-core.exe"),
+                  os.path.join(here, "..", "bin", "deskflow-windows", "deskflow-core.exe")]
+    else:
+        places = []
+    for p in places:
+        if os.path.exists(p):
+            return os.path.normpath(p)
+    return None
+
+
 def find_core():
-    """deskflow-core from an installed Deskflow, or None."""
+    """deskflow-core: WinLink's own, else an installed Deskflow, or None."""
     env = os.environ.get("WINLINK_DESKFLOW")
     if env and os.path.exists(env):
         return env
+    own = bundled_core()
+    if own:
+        return own
     if IS_MAC:
         for app in ("/Applications/Deskflow.app", os.path.expanduser("~/Applications/Deskflow.app")):
             p = os.path.join(app, "Contents", "MacOS", "deskflow-core")
@@ -81,6 +108,17 @@ def find_core():
     return None
 
 
+def core_version(core):
+    """(major, minor, patch) of a deskflow-core, or None if it can't tell."""
+    try:
+        out = subprocess.run([core, "--version"], capture_output=True, text=True, timeout=10,
+                             creationflags=0x08000000 if IS_WIN else 0).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"v?(\d+)\.(\d+)\.(\d+)", out)
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
 def screen_name(device_name, device_id):
     """A name Deskflow accepts (letters, digits, - _ .) that's still recognisable, and unique."""
     clean = re.sub(r"[^\w\-.]", "", re.sub(r"\s+", "_", device_name.strip()))
@@ -88,14 +126,43 @@ def screen_name(device_name, device_id):
     return f"{clean}-{device_id[:4]}"
 
 
+def portable_core(core, folder):
+    """Windows: Deskflow reads its trusted lists from C:\\ProgramData\\Deskflow\\tls whatever --settings
+    says, unless it runs in portable mode (a settings\\Deskflow.conf next to the program). So WinLink runs
+    its own portable copy: the installed Deskflow folder mirrored into `folder` with hard links (no
+    space used; a real copy if links can't be made), refreshed when Deskflow is updated."""
+    src = os.path.dirname(core)
+    for root, dirs, files in os.walk(src):
+        rel = os.path.relpath(root, src)
+        if rel.split(os.sep)[0] == "settings":
+            continue
+        dst_root = os.path.normpath(os.path.join(folder, rel))
+        os.makedirs(dst_root, exist_ok=True)
+        for name in files:
+            a, b = os.path.join(root, name), os.path.join(dst_root, name)
+            if os.path.exists(b):
+                sa, sb = os.stat(a), os.stat(b)
+                if os.path.samefile(a, b) or (sa.st_size == sb.st_size and int(sa.st_mtime) == int(sb.st_mtime)):
+                    continue
+                os.remove(b)
+            try:
+                os.link(a, b)
+            except OSError:
+                shutil.copy2(a, b)
+    return os.path.join(folder, os.path.basename(core))
+
+
 class Files:
     """Deskflow's files for WinLink, in one private folder."""
 
     def __init__(self, folder):
         self.folder = folder
-        self.tls = os.path.join(folder, "tls")             # Deskflow looks next to its settings file
+        # Deskflow looks for tls/ next to its settings file; on Windows that file must be the portable
+        # one (see portable_core)
+        base = os.path.join(folder, "engine", "settings") if IS_WIN else folder
+        self.tls = os.path.join(base, "tls")
         self.cert = os.path.join(self.tls, "winlink.pem")
-        self.settings = os.path.join(folder, "deskflow.conf")
+        self.settings = os.path.join(base, "Deskflow.conf" if IS_WIN else "deskflow.conf")
         self.server_conf = os.path.join(folder, "server.conf")
         os.makedirs(self.tls, exist_ok=True)
 
@@ -137,11 +204,11 @@ class Files:
                 if re.fullmatch(r"[0-9a-f]{64}", fp or ""):
                     f.write(f"v2:sha256:{fp}\n")
 
-    def write_settings(self, name, remote_host="", screens=()):
+    def write_settings(self, name, remote_host="", screens=(), port=PORT):
         """screens: every computer in the arrangement (the server's view). Deskflow 1.27+ lists them
         here as [computer_<name>] groups; the layout file only links them."""
         lines = [
-            "[core]", f"computerName={name}", f"port={PORT}", "preventSleep=false", "",
+            "[core]", f"computerName={name}", f"port={port}", "preventSleep=false", "",
             "[client]", f"remoteHost={remote_host}", "",
             "[security]", "tlsEnabled=true", "checkPeerFingerprints=true", f"certificate={_ini(self.cert)}", "",
             "[server]", "externalConfig=true", f"externalConfigFile={_ini(self.server_conf)}",
@@ -186,7 +253,10 @@ class Engine:
         with self.lock:
             self.mode = mode
             flags = 0x08000000 if IS_WIN else 0                 # no console window
-            self.proc = subprocess.Popen([self.core, mode, "--settings", self.files.settings, "--new-instance"],
+            core = self.core
+            if IS_WIN:
+                core = portable_core(core, os.path.join(self.files.folder, "engine"))
+            self.proc = subprocess.Popen([core, mode, "--settings", self.files.settings, "--new-instance"],
                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                          text=True, errors="replace", creationflags=flags)
             proc = self.proc
@@ -197,7 +267,8 @@ class Engine:
         for line in proc.stdout:
             line = line.strip()
             if line:
-                log.debug("deskflow: %s", line)
+                important = summarise(line) or re.search(r"\b(ERROR|WARNING|FATAL|CRIT)\b", line, re.I)
+                log.log(logging.INFO if important else logging.DEBUG, "deskflow: %s", line)
                 self.on_event(line)
         code = proc.wait()
         if proc is self.proc:
@@ -264,13 +335,131 @@ def mac_accessibility_ok():
         return None
 
 
-def _route_addr(peer):
-    """An address Deskflow can reach the computer on: same Wi-Fi first, IPv4 first. WinLink's
-    built-in Tailscale (ts:...) runs inside WinLink, so Deskflow can't use it; the Tailscale app's
-    100.x addresses work."""
-    addrs = [a for a in peer.addresses() if not a.startswith("ts:") and "%" not in a]
-    v4 = [a for a in addrs if ":" not in a]
-    return (v4 or addrs or [None])[0]
+def pipe(sock, chan):
+    """Copy both ways between a local socket and a WinLink Channel until either side closes."""
+    def up():
+        try:
+            while True:
+                data = sock.recv(65536)
+                if not data:
+                    break
+                chan.sendall(data)
+        except (OSError, ConnectionError):
+            pass
+        finally:
+            for c in (chan, sock):
+                try:
+                    c.shutdown(socket.SHUT_RDWR)
+                except (OSError, ConnectionError):
+                    pass
+    t = threading.Thread(target=up, daemon=True, name="kvm tunnel")
+    t.start()
+    try:
+        while True:
+            data = chan.read1()
+            if not data:
+                break
+            sock.sendall(data)
+    except (OSError, ConnectionError):
+        pass
+    finally:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        t.join(5)
+        sock.close()
+        chan.close()
+
+
+class Relay:
+    """Deskflow's connection always travels over WinLink's own encrypted link, so it works wherever
+    WinLink does: same Wi-Fi, the Tailscale app, WinLink's built-in Tailscale (which Deskflow can't
+    use itself), and networks that only let one of the two computers connect to the other.
+
+    On the computer that follows, Deskflow's client connects to 127.0.0.1:<port>. For each of its
+    connections WinLink both dials the sharing computer (a "kvm" connection, then {"go": tid}) and
+    asks it over the control link to dial back ({"op": "dialback", "tid"}; it opens a "kvm"
+    connection with {"tid"} and waits for {"go"}). Whichever arrives first carries Deskflow; the
+    sharing computer hands it to its Deskflow server. Deskflow's TLS and fingerprint check run end
+    to end inside it."""
+
+    WAIT = 15        # seconds to get through either way before giving the connection up
+
+    def __init__(self, node, peer, ask_dialback):
+        self.node, self.peer, self.ask = node, peer, ask_dialback
+        self.pending = {}            # tid -> Deskflow's local socket, until one way gets through
+        self.lock = threading.Lock()
+        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(4)
+        self.port = self.listener.getsockname()[1]
+        self.closed = False
+        threading.Thread(target=self._accept, daemon=True, name="kvm relay").start()
+
+    def _accept(self):
+        while not self.closed:
+            try:
+                sock, _ = self.listener.accept()
+            except OSError:
+                return
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                pass
+            tid = secrets.token_hex(8)
+            with self.lock:
+                self.pending[tid] = sock
+            threading.Thread(target=self._direct, args=(tid,), daemon=True, name="kvm relay").start()
+            self.ask(tid)
+            threading.Timer(self.WAIT, self._expire, args=(tid,)).start()
+
+    def _claim(self, tid):
+        with self.lock:
+            return self.pending.pop(tid, None)
+
+    def _expire(self, tid):
+        sock = self._claim(tid)
+        if sock is not None:
+            log.info("keyboard and mouse: couldn't get through to %s either way", self.peer.name)
+            sock.close()
+
+    def _direct(self, tid):
+        try:
+            chan = self.node.dial(self.peer, "kvm", timeout=6)
+        except Exception as e:  # noqa: BLE001  (offline, one-way network...: the dial-back may work)
+            log.debug("keyboard and mouse: dialing %s failed: %s", self.peer.name, e)
+            return
+        self._use(tid, chan, "this computer dialed")
+
+    def dialed_back(self, tid, chan):
+        self._use(tid, chan, f"{self.peer.name} dialed back")
+
+    def _use(self, tid, chan, how):
+        sock = self._claim(tid)
+        if sock is None:                 # the other way won, or it's too late
+            chan.close()
+            return
+        try:
+            chan.send_json({"go": tid})
+        except (OSError, ConnectionError):
+            chan.close()
+            sock.close()
+            return
+        log.info("keyboard and mouse: connected to %s (%s, %s)", self.peer.name, how, getattr(chan, "route", "?"))
+        chan.settimeout(None)
+        pipe(sock, chan)
+
+    def close(self):
+        self.closed = True
+        try:
+            self.listener.close()
+        except OSError:
+            pass
+        with self.lock:
+            socks, self.pending = list(self.pending.values()), {}
+        for sock in socks:
+            sock.close()
 
 
 class Sharing:
@@ -288,11 +477,12 @@ class Sharing:
         for pid, side in (conf.pop("layout", None) or {}).items():   # older: left/right/up/down of here
             if side in STEP and pid not in grid:
                 grid[pid] = list(STEP[side])
-        self.core = find_core()
         self.files = Files(folder)
-        self.engine = Engine(self.core, self.files, self._on_line) if self.core else None
+        self.core, self.engine, self.outdated = None, None, None
+        self._find()
         self.role = None             # "server" | "client" | None
         self.server_peer = None      # client: whose keyboard and mouse we follow
+        self.relay = None            # client: Relay carrying Deskflow's connection
         self.clients = {}            # server: peer id -> {"fp", "screen", "state", "text"}
         self.status, self.problem = "", ""
         self.applied = None
@@ -310,12 +500,22 @@ class Sharing:
     def me(self):
         return screen_name(self.node.name, self.node.id)
 
+    def _find(self):
+        core = find_core()
+        self.outdated = None
+        if core and core != bundled_core():               # ours is the right version already
+            v = core_version(core)
+            if v is not None and v[:2] < MIN_VERSION:
+                self.outdated = ".".join(map(str, v))
+                log.info("keyboard and mouse: Deskflow %s is too old (needs %d.%d+)", self.outdated, *MIN_VERSION)
+                core = None
+        self.core = core
+        self.engine = Engine(core, self.files, self._on_line) if core else None
+
     def recheck(self):
-        """Deskflow installed since? (the Get Deskflow button, or a new launch)."""
+        """Deskflow installed or updated since? (the Get Deskflow button, or a new launch)."""
         if self.core is None:
-            self.core = find_core()
-            if self.core:
-                self.engine = Engine(self.core, self.files, self._on_line)
+            self._find()
         self.on_change()
 
     # ---- the computer you're at
@@ -435,6 +635,8 @@ class Sharing:
                     c = self.clients[peer.id]
                     c.update(fp=fp, state="starting", text="")
                     self._apply_server()
+            elif op == "dialback" and peer.id in self.clients and re.fullmatch(r"[0-9a-f]{16}", str(msg.get("tid", ""))):
+                threading.Thread(target=self._dial_back, args=(peer, msg["tid"]), daemon=True, name="kvm dial back").start()
             elif op == "no" and peer.id in self.clients:
                 self.clients[peer.id].update(state="no", text=str(msg.get("reason", ""))[:160])
         self.on_change()
@@ -450,14 +652,13 @@ class Sharing:
             why = f"Deskflow isn't installed on {self.node.name}"
         elif self.conf.get("share"):
             why = f"{self.node.name} is sharing its own keyboard and mouse"
-        addr = _route_addr(peer)
-        if why is None and addr is None:
-            why = f"{self.node.name} only reaches {peer.name} through WinLink's built-in Tailscale; use the same Wi-Fi"
         if why:
             self._send(peer, {"op": "no", "reason": why})
             return
+        self._close_relay()
+        self.relay = Relay(self.node, peer, lambda tid: self._send(peer, {"op": "dialback", "tid": tid}))
         self.files.trust("servers", [fp])
-        self.files.write_settings(screen, remote_host=addr)
+        self.files.write_settings(screen, remote_host="127.0.0.1", port=self.relay.port)
         self.server_peer, self.role = peer, "client"
         self.engine.start("client")
         self.status = f"Following {peer.name}'s keyboard and mouse."
@@ -470,7 +671,63 @@ class Sharing:
                 log.info("keyboard and mouse: client stopped%s", f" ({why})" if why else "")
             if self.role == "client":
                 self.role, self.server_peer, self.status = None, None, why
+            self._close_relay()
         self.on_change()
+
+    def _close_relay(self):
+        if self.relay is not None:
+            self.relay.close()
+            self.relay = None
+
+    def tunnel_in(self, peer, chan):
+        """A "kvm" connection (see Relay). Runs on the connection's thread until it closes."""
+        try:
+            chan.settimeout(Relay.WAIT)
+            msg = chan.recv_json()
+        except (OSError, ValueError, ConnectionError):
+            chan.close()
+            return
+        tid = str(msg.get("tid") or msg.get("go") or "")
+        relay = self.relay
+        if "tid" in msg and relay is not None and self.server_peer is peer:
+            relay.dialed_back(tid, chan)                 # we follow; the sharing computer dialed back
+        elif "go" in msg:
+            self._to_engine(peer, chan)                  # we share; the follower dialed us
+        else:
+            chan.close()
+
+    def _dial_back(self, peer, tid):
+        try:
+            chan = self.node.dial(peer, "kvm", timeout=6)
+            chan.settimeout(Relay.WAIT)
+            chan.send_json({"tid": tid})
+            msg = chan.recv_json()
+        except Exception as e:  # noqa: BLE001  (the follower's own dial may have worked)
+            log.debug("keyboard and mouse: dialing back %s failed: %s", peer.name, e)
+            return
+        if msg.get("go") == tid:
+            self._to_engine(peer, chan)
+        else:
+            chan.close()
+
+    def _to_engine(self, peer, chan):
+        """Hand a follower's connection to our Deskflow server."""
+        with self.lock:
+            ok = (self.role == "server" and self.engine is not None and self.engine.running
+                  and self.clients.get(peer.id, {}).get("fp"))
+        if not ok:
+            chan.close()
+            return
+        try:
+            sock = socket.create_connection(("127.0.0.1", PORT), timeout=5)
+            sock.settimeout(None)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError as e:
+            log.debug("keyboard and mouse: can't reach our Deskflow server: %s", e)
+            chan.close()
+            return
+        chan.settimeout(None)
+        pipe(sock, chan)
 
     def set_allow(self, on):
         self.conf["allow"] = bool(on)
@@ -557,6 +814,8 @@ class Sharing:
                               "on": c.get("state") == "on", "reachable": pos is None or p.id in near})
         return {
             "available": self.core is not None,
+            "outdated": self.outdated,                   # an installed Deskflow too old to use
+            "needs": ".".join(map(str, MIN_VERSION)),
             "download": DOWNLOAD_URL,
             "share": bool(self.conf.get("share")),
             "allow": bool(self.conf.get("allow", True)),

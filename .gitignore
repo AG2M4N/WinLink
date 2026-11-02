@@ -24,3 +24,7 @@ mobile/ios/
 .claude/
 .DS_Store
 *.log
+
+# Release builds (.github/workflows/release.yml, packaging/)
+/release/
+/stage/

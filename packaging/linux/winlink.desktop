@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=WinLink
+GenericName=Clipboard, files and sound between your devices
+Comment=Share the clipboard, send files and play sound between your Macs, PCs and phones
+Exec=/usr/bin/winlink
+Icon=winlink
+Terminal=false
+Categories=Network;Utility;
+Keywords=clipboard;files;sound;share;tailscale;keyboard;mouse;

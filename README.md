@@ -91,9 +91,11 @@ Ready-made downloads are on the **[Releases](../../releases) page**.
 
 | System | Download | Install |
 |---|---|---|
-| **macOS 13+** (Apple Silicon) | `WinLink-mac.zip` | Unzip, move **WinLink.app** to Applications and open it. Built without an Apple notarisation, so the first time right-click it and choose **Open**. |
-| **Windows 10/11** (x64 and ARM) | `WinLink-for-Windows.zip` | Unzip and double-click **build_windows.bat** (needs Python 3.11+ from python.org with *Add python.exe to PATH*). Then open **dist\WinLink\WinLink.exe**; keep the folder together. If Windows Firewall asks, allow **Private networks**. |
-| **Linux** (x64 and ARM) | `WinLink-for-Linux.zip` | Unzip, then in a terminal in that folder: `sh install_linux.sh`. |
+| **macOS 13+** | `WinLink-mac-AppleSilicon.dmg` (M1 and newer) or `WinLink-mac-Intel.dmg` | Open it and drag **WinLink** to Applications. It isn't notarised by Apple, so the first time right-click WinLink → **Open** (on macOS 15: System Settings → Privacy & Security → **Open Anyway**). |
+| **Windows 10/11** | `WinLink-Setup.exe` | Run it; it installs for your user (no administrator needed). Works on Windows on ARM too. If Windows Firewall asks, allow **Private networks**. |
+| **Ubuntu, Debian, Mint, Pop!_OS** | `winlink_…_amd64.deb` (`_arm64.deb` for ARM) | `sudo apt install ./winlink_*.deb` |
+| **Fedora** | `winlink-….x86_64.rpm` (`.aarch64.rpm` for ARM) | `sudo dnf install ./winlink-*.rpm` |
+| **Other Linux** (Arch, openSUSE…) | the source code | `sh install_linux.sh` (see [Linux](#linux)). |
 | **Android 10+** | `WinLink.apk` | Open it on the phone and allow installing from your browser. |
 
 ### Mac
@@ -101,17 +103,18 @@ If macOS asks to let WinLink find devices on your local network, click **Allow**
 sound, macOS asks once for **Screen & System Audio Recording**; WinLink shows a button that opens it.
 
 ### Windows
-WinLink's window uses Microsoft Edge WebView2, which is built into Windows 10 and 11. On Windows on ARM
-(Snapdragon laptops), install the regular 64-bit (x64) Python; it runs fine there.
+WinLink's window uses Microsoft Edge WebView2, which is built into Windows 10 and 11. Remove it from
+Settings → Apps like any other app.
 
 ### Linux
 📖 **[The full Linux guide and command reference](docs/linux.md)**: desktop and headless use, every
 `winlink` command, scripting, systemd, firewall and troubleshooting.
 
-`install_linux.sh` installs the few system packages WinLink needs (asking for your password once), sets
-WinLink up for your user in `~/.local/share/winlink`, adds it to your apps menu and can start it at
-login. It works on Ubuntu, Debian, Mint, Pop!_OS, Fedora, Arch, Manjaro and openSUSE, with GNOME, KDE,
-Cinnamon, Xfce and others, on X11 or Wayland.
+The `.deb` and `.rpm` packages have everything in one: the window, headless mode (`winlink daemon`)
+and the `winlink` command; your package manager installs what they need. On other distributions,
+`install_linux.sh` (in the source code) installs the system packages WinLink needs, sets it up for your
+user in `~/.local/share/winlink` and adds it to your apps menu. Works with GNOME, KDE, Cinnamon, Xfce
+and others, on X11 or Wayland.
 
 - `winlink --check` shows what works on your PC and what to install for anything that doesn't.
 - **Clipboard:** wl-clipboard on Wayland desktops that allow it (KDE, Sway, Hyprland); X11 (xclip)
@@ -119,7 +122,8 @@ Cinnamon, Xfce and others, on X11 or Wayland.
 - **Sharing sound:** captures what the PC plays through PulseAudio or PipeWire (`parec`).
 - **Firewall:** if devices can't connect, allow TCP 50555, UDP 50556 and mDNS (UDP 5353). The installer
   offers to do this for ufw and firewalld.
-- Update: unzip the new version and run `sh install_linux.sh` again. Remove: `sh install_linux.sh --uninstall`.
+- Update: install the new package the same way. Remove: `sudo apt remove winlink` / `sudo dnf remove winlink`
+  (with `install_linux.sh`: `sh install_linux.sh --uninstall`).
 
 ### Phones
 The phone app is in [`mobile/`](mobile) (React Native with Expo). Android: install the APK. iPhone: build
@@ -167,8 +171,9 @@ someone else's, so sound can't loop between them.
 Use one computer's keyboard and mouse on your other computers, like one big desk: move the pointer off
 the edge of the screen and keep typing on the next one.
 
-1. Install **[Deskflow](https://github.com/deskflow/deskflow/releases/latest)** (free, open source) on each
-   computer. WinLink finds it by itself; it doesn't need to be opened or set up.
+1. On Mac and Windows there's nothing to install: WinLink has Deskflow's engine built in. On Linux,
+   install **[Deskflow](https://github.com/deskflow/deskflow/releases/latest)** 1.27 or newer (your
+   distribution's package, or the one for it on Deskflow's releases page); WinLink finds it by itself.
 2. On the computer whose keyboard and mouse you want to use: Devices → **Keyboard and mouse** → turn on
    **Share this computer's keyboard and mouse**.
 3. **Arrange the screens** the way they stand on your desk: drag your other computers from the tray
@@ -186,8 +191,10 @@ isn't touched.
 
 - On a **Mac**, allow WinLink under *Privacy & Security → Accessibility* (WinLink shows a button).
 - The other computers follow automatically; turn off *Let other computers control this one* to refuse.
-- It works on the same network, or over the Tailscale app. WinLink's built-in Tailscale runs inside
-  WinLink, so Deskflow can't use it yet.
+- It works wherever WinLink connects: same Wi-Fi, the Tailscale app, WinLink's built-in Tailscale, and
+  networks that only let one computer reach the other. Deskflow's connection travels over WinLink's
+  encrypted link (Deskflow's own TLS still runs inside it). Away from the same network, the pointer lags
+  by the round trip between the computers.
 
 ### Connect from anywhere
 1. Switch on **Connect from anywhere** on each device (Devices page; on Android, *Away from home*).
@@ -278,6 +285,11 @@ build_windows.bat               # Windows: dist\WinLink\WinLink.exe
 sh install_linux.sh             # Linux: installs for your user
 ```
 
+The downloads on the Releases page are built by [`.github/workflows/release.yml`](.github/workflows/release.yml)
+on GitHub's machines: it compiles Deskflow's engine from its source for Mac and Windows, builds WinLink
+for every system and packages it ([`packaging/`](packaging): the Windows installer, the Mac disk image,
+the Linux packages). Push a tag `v<version>` (matching `VERSION` in `src/net.py`) to make a draft release.
+
 Run from source on a Mac without building:
 `python3 -m venv .venv && .venv/bin/pip install -r requirements-mac.txt && .venv/bin/python src/link.py`
 
@@ -310,21 +322,22 @@ src/            the desktop app (Python): app.py window and state, net.py networ
                 (Deskflow), tray.py, autostart.py, keepawake.py,
                 clip_*.py clipboards, notch_mac.py, webui/ the window's HTML
 helper/         the built-in Tailscale helper (Go, tsnet) and its build scripts
+packaging/      the Windows installer (Inno Setup), the Mac disk image, the Linux packages (nfpm)
 mobile/         the phone app (Expo): src/core protocol, modules/winlink-native Kotlin and Swift, tests/
 assets/         icons
 docs/           screenshots
 ```
 
 ## Roadmap
-- Bundle Deskflow's engine, so keyboard and mouse sharing works without installing Deskflow, and over the built-in Tailscale.
 - Automatic phone → computer clipboard on Android (text-selection menu, send on open, optional automatic mode).
 - iPhone release build.
 
 ## License
 WinLink is free software under the [GNU General Public License v3.0](LICENSE).
 
-Keyboard and mouse sharing runs [Deskflow](https://github.com/deskflow/deskflow) (GPL-2.0), installed
-separately, as its own program. It builds on [Tailscale](https://github.com/tailscale/tailscale) (BSD-3-Clause),
+Keyboard and mouse sharing runs [Deskflow](https://github.com/deskflow/deskflow) (GPL-2.0) as its own
+program; the Mac and Windows downloads include its engine, built from Deskflow's unmodified source (its
+licence and a link to that source are next to it). It builds on [Tailscale](https://github.com/tailscale/tailscale) (BSD-3-Clause),
 [pywebview](https://github.com/r0x0r/pywebview), [Expo](https://expo.dev) and
 [React Native](https://reactnative.dev), [python-zeroconf](https://github.com/python-zeroconf/python-zeroconf),
 [sounddevice](https://github.com/spatialaudio/python-sounddevice),

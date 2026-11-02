@@ -5,6 +5,7 @@ import importlib, os, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "src"))
 T = sys.argv[1]
 os.environ["LINK_NO_BEACON"] = "1"
+os.environ["LINK_KVM_PORT"] = "24877"         # not the real WinLink's
 import net, kvm
 results = []
 def check(name, ok, info=""):
@@ -24,6 +25,7 @@ def make(home, port, probe, name):
             sh.refresh()
     n = mod.Node(mod.Settings(), emit)
     box["kvm"] = kvm.Sharing(n, n.settings, os.path.join(home, "kvm"), lambda: None)
+    n.on_kvm = box["kvm"].tunnel_in
     n.start()
     time.sleep(0.8)        # let it bind its port before the next node reloads the module's settings
     return n, box["kvm"]
@@ -86,6 +88,30 @@ for _ in range(50):
     if kb.role is None: break
     time.sleep(0.1)
 check("taking B out stops its client", kb.role is None, kb.status)
+
+# Deskflow always goes through WinLink's link: check it gets through when only one side can dial
+def one_way(blocked, label):
+    real = blocked.dial
+    def dial(peer, kind, *a, **k):
+        if kind == "kvm":
+            raise OSError("blocked by the network (test)")
+        return real(peer, kind, *a, **k)
+    blocked.dial = dial
+    ka.set_side(pB.id, "right")
+    for _ in range(200):
+        if ka.clients.get(pB.id, {}).get("state") == "on": break
+        time.sleep(0.1)
+    check(label, ka.clients.get(pB.id, {}).get("state") == "on", ka.clients.get(pB.id, {}).get("state"))
+    blocked.dial = real
+    ka.set_side(pB.id, "")
+    for _ in range(50):
+        if kb.role is None: break
+        time.sleep(0.1)
+B.peers[A.id].port = 51990     # B dials A here: in one process B learned the shared module's port
+one_way(B, "the follower can't dial out: connected by dialing back")
+one_way(A, "the sharer can't dial out: connected directly")
+check("... Deskflow's client points at the relay", "remoteHost=127.0.0.1" in open(kb.files.settings).read())
+check("... and stopping closes the relay", kb.role is None and kb.relay is None)
 
 kb.set_allow(False)                         # B refuses from now on
 ka.set_side(pB.id, "left")

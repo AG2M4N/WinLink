@@ -1,0 +1,3 @@
+#!/bin/sh
+# WinLink: the window (on a desktop), headless mode (winlink daemon) and every command (winlink help).
+exec /usr/bin/python3 /usr/lib/winlink/src/link.py "$@"
