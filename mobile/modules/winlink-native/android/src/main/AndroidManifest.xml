@@ -1,0 +1,40 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- To ask once to be left out of battery optimisation, so WinLink isn't paused in the background. -->
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+  <!-- To see whether the Tailscale app is installed (Android 11+ hides other apps otherwise). -->
+  <queries>
+    <package android:name="com.tailscale.ipn" />
+  </queries>
+
+  <application>
+    <!-- Keeps WinLink connected while it's in the background (with a notification). -->
+    <service android:name="expo.modules.winlinknative.LinkService" android:exported="false"
+      android:foregroundServiceType="connectedDevice" />
+    <!-- Captures what the phone plays, for "Share this phone's sound". -->
+    <service android:name="expo.modules.winlinknative.CaptureService" android:exported="false"
+      android:foregroundServiceType="mediaProjection" />
+    <!-- Quick Settings tile: send the clipboard to your computers. -->
+    <service android:name="expo.modules.winlinknative.ClipTileService" android:exported="true"
+      android:label="Send clipboard" android:icon="@android:drawable/ic_menu_share"
+      android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+      <intent-filter>
+        <action android:name="android.service.quicksettings.action.QS_TILE" />
+      </intent-filter>
+    </service>
+    <!-- Invisible: reads the clipboard (only allowed while an app is in front), then closes. -->
+    <activity android:name="expo.modules.winlinknative.ClipboardActivity" android:exported="false"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true"
+      android:taskAffinity="" android:noHistory="true" />
+  </application>
+</manifest>

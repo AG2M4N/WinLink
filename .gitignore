@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Builds (see build_mac.sh, build_windows.bat, install_linux.sh; downloads are on the Releases page)
+/WinLink.app
+/dist/
+/build/
+/WinLink for *.zip
+*.spec
+
+# The Tailscale helper, built from helper/ (helper/build_all.sh), shipped in releases
+/bin/
+mobile/modules/winlink-native/android/src/main/jniLibs/
+
+# Phone app
+mobile/node_modules/
+mobile/.expo/
+mobile/android/
+mobile/ios/
+
+# Local tools and editor files
+.claude/
+.DS_Store
+*.log

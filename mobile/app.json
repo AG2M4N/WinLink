@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "WinLink",
+    "slug": "winlink",
+    "scheme": "winlink",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "local.akshat.winlink",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "WinLink finds your Macs and PCs on this Wi-Fi to share the clipboard, files and sound.",
+        "NSBonjourServices": [
+          "_winlink._tcp"
+        ],
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "local.akshat.winlink",
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F4F2",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+      ]
+    },
+    "plugins": [
+      "expo-sharing",
+      "expo-secure-store",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 20,
+            "NSExtensionActivationSupportsMovieWithMaxCount": 10,
+            "NSExtensionActivationSupportsFileWithMaxCount": 20
+          },
+          "androidIntentFilters": [
+            "*/*"
+          ],
+          "androidMultiIntentFilters": [
+            "*/*"
+          ]
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "useLegacyPackaging": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "40e70d0b-1ba1-4563-8430-046a490fd82d"
+      }
+    },
+    "owner": "ag2m4n"
+  }
+}

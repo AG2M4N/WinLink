@@ -1,0 +1,9 @@
+pywebview
+cryptography
+sounddevice
+numpy
+pyobjc-framework-Cocoa
+zeroconf
+pyobjc-framework-ScreenCaptureKit
+pyobjc-framework-CoreMedia
+pyobjc-framework-libdispatch

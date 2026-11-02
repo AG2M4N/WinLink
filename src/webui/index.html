@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WinLink</title>
+<style>
+:root {
+  --bg: #f5f5f3;
+  --side: #ececea;
+  --surface: #ffffff;
+  --raised: #f1f1ef;
+  --raised-hover: #e8e8e5;
+  --text: #1c1c1e;
+  --text-2: #6c6c70;
+  --text-3: #a1a1a6;
+  --line: rgba(0, 0, 0, .075);
+  --accent: #3e5f8a;
+  --accent-hover: #34517a;
+  --accent-soft: rgba(62, 95, 138, .09);
+  --on-accent: #ffffff;
+  --good: #3f8a5c;
+  --warn: #9a6b26;
+  --warn-soft: rgba(154, 107, 38, .10);
+  --bad: #b4483c;
+  --bad-soft: rgba(180, 72, 60, .08);
+  --track: #dcdcd8;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 0 0 1px var(--line);
+  --radius: 14px;
+  color-scheme: light dark;
+}
+:root.dark {
+  --bg: #171719;
+  --side: #1d1d20;
+  --surface: #222225;
+  --raised: #2b2b2f;
+  --raised-hover: #333338;
+  --text: #f2f2f3;
+  --text-2: #9b9ba1;
+  --text-3: #66666c;
+  --line: rgba(255, 255, 255, .07);
+  --accent: #8faad3;
+  --accent-hover: #a3bbdd;
+  --accent-soft: rgba(143, 170, 211, .12);
+  --on-accent: #111214;
+  --good: #7bb592;
+  --warn: #d1a35f;
+  --warn-soft: rgba(209, 163, 95, .12);
+  --bad: #e08f82;
+  --bad-soft: rgba(224, 143, 130, .10);
+  --track: #3a3a3e;
+  --shadow: 0 0 0 1px var(--line);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+       -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; cursor: default; }
+svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round;
+      stroke-linejoin: round; flex: none; }
+button { font: inherit; border: 0; cursor: pointer; color: inherit; background: none; }
+input { font: inherit; color: inherit; }
+
+/* ---- layout */
+.app { display: grid; grid-template-columns: 212px 1fr; height: 100vh; }
+aside { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column;
+        padding: 18px 12px 14px; min-height: 0; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; }
+.logo { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: var(--on-accent);
+        display: grid; place-items: center; }
+.logo svg { width: 18px; height: 18px; stroke-width: 1.9; }
+.brand b { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+nav { display: flex; flex-direction: column; gap: 2px; }
+.nav { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 9px;
+       color: var(--text-2); font-weight: 500; text-align: left; transition: background .12s, color .12s; }
+.nav:hover { background: var(--raised-hover); color: var(--text); }
+.nav.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.nav.on svg { color: var(--accent); }
+.nav .count { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px;
+              font-weight: 600; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
+.nav .count.dot { min-width: 8px; width: 8px; height: 8px; padding: 0; }
+.side-foot { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line); }
+.status { display: flex; align-items: center; gap: 8px; font-weight: 550; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
+.status.on .dot { background: var(--good); }
+.me { color: var(--text-2); font-size: 11.5px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+main { overflow-y: auto; min-height: 0; }
+.page { display: none; max-width: 760px; margin: 0 auto; padding: 26px 30px 48px; }
+.page.on { display: block; animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.head { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
+.head .grow { flex: 1; min-width: 0; }
+h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.015em; }
+.head p { margin: 3px 0 0; color: var(--text-2); }
+h2 { margin: 24px 2px 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3);
+     display: flex; align-items: center; gap: 8px; }
+h2 .spacer { flex: 1; }
+h2 button { text-transform: none; letter-spacing: 0; font-size: 12px; }
+
+/* ---- cards and rows */
+.card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 58px; }
+.row + .row, .sep { border-top: 1px solid var(--line); }
+.grow { flex: 1; min-width: 0; }
+.name { font-size: 13.5px; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub { color: var(--text-2); font-size: 12px; margin-top: 1px; }
+.facts .row { min-height: 0; padding: 10px 14px; align-items: baseline; }
+.facts .k { width: 108px; flex: none; color: var(--text-2); font-size: 12.5px; }
+.facts .v { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+.sub.good { color: var(--good); } .sub.warn { color: var(--warn); } .sub.bad { color: var(--bad); } .sub.strong { color: var(--text); }
+.icon { width: 34px; height: 34px; border-radius: 9px; background: var(--raised); color: var(--text-2);
+        display: grid; place-items: center; flex: none; }
+.icon.on { color: var(--accent); background: var(--accent-soft); }
+.tag { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; margin-left: 6px; border-radius: 6px;
+       background: var(--raised); color: var(--text-2); font-size: 10.5px; font-weight: 600; vertical-align: 1px; }
+.note { color: var(--text-3); font-size: 12px; margin: 8px 4px 0; }
+
+.btn { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 560; background: var(--raised);
+       transition: background .12s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--raised-hover); }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.quiet { background: transparent; color: var(--text-2); padding: 0 9px; }
+.btn.quiet:hover { background: var(--raised); color: var(--text); }
+.btn.danger:hover { background: var(--bad-soft); color: var(--bad); }
+.btn svg { width: 15px; height: 15px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.iconbtn { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); }
+.iconbtn:hover { background: var(--raised); color: var(--text); }
+.iconbtn.danger:hover { background: var(--bad-soft); color: var(--bad); }
+.iconbtn svg { width: 16px; height: 16px; }
+.actions { display: flex; gap: 6px; flex: none; align-items: center; }
+.link { color: var(--accent); font-weight: 560; padding: 0; }
+.link:hover { text-decoration: underline; }
+
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 11px; background: var(--track); transition: background .2s; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); }
+
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--raised); gap: 2px; flex-wrap: wrap; }
+.seg button { height: 26px; padding: 0 11px; border-radius: 7px; font-size: 12px; font-weight: 520; color: var(--text-2); }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 600; }
+:root.dark .seg button.on { background: var(--raised-hover); }
+.field { display: flex; align-items: center; gap: 12px; padding: 0 14px 14px 60px; flex-wrap: wrap; }
+.field > span { color: var(--text-2); font-size: 12px; min-width: 64px; }
+.hint { color: var(--text-3); font-size: 11.5px; padding: 0 14px 14px 60px; margin-top: -6px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { height: 26px; padding: 0 11px; border-radius: 13px; background: var(--raised); color: var(--text-2); font-size: 12px; font-weight: 500; }
+.chip:hover { color: var(--text); }
+.chip.on { background: var(--accent-soft); color: var(--accent); font-weight: 600;
+           box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* ---- devices */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.device { padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 132px; }
+.device .top { display: flex; gap: 12px; align-items: center; }
+.device .icon { width: 42px; height: 42px; border-radius: 11px; }
+.device .icon svg { width: 22px; height: 22px; }
+.device .actions { margin-top: auto; }
+.ask { background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.ask.repair { background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 30%, transparent); }
+.code { font: 600 20px/1 ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; letter-spacing: .18em;
+        background: var(--surface); padding: 7px 6px 7px 11px; border-radius: 9px; box-shadow: var(--shadow); }
+.empty { padding: 36px 20px; text-align: center; color: var(--text-2); }
+.empty svg { width: 46px; height: 46px; color: var(--text-3); stroke-width: 1.2; margin-bottom: 10px; }
+.empty .name { white-space: normal; color: var(--text); margin-bottom: 4px; }
+.pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 8px;
+         vertical-align: 1px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* ---- files */
+.drop { border: 1.5px dashed color-mix(in srgb, var(--text-3) 65%, transparent); border-radius: var(--radius);
+        padding: 22px 20px; display: flex; align-items: center; gap: 16px; background: var(--surface); transition: .15s; }
+.drop .icon { width: 46px; height: 46px; border-radius: 12px; }
+.drop .icon svg { width: 22px; height: 22px; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop .big { font-size: 14.5px; font-weight: 600; }
+.sendto { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--text-2); font-size: 12px; }
+.batch { display: flex; align-items: center; gap: 12px; padding: 11px 14px; }
+.batch + .batch { border-top: 1px solid var(--line); }
+.dir { width: 26px; height: 26px; border-radius: 50%; background: var(--raised); display: grid; place-items: center; flex: none; color: var(--text-2); }
+.dir svg { width: 14px; height: 14px; stroke-width: 2; }
+.batch .meta { display: flex; gap: 8px; color: var(--text-2); font-size: 12px; margin-top: 2px; }
+.batch .meta .bad { color: var(--bad); } .batch .meta .good { color: var(--good); }
+.bar { height: 4px; border-radius: 2px; background: var(--raised); margin-top: 7px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .25s; }
+.file { display: flex; align-items: center; gap: 12px; padding: 9px 14px; }
+.file + .file { border-top: 1px solid var(--line); }
+.file .ext { width: 34px; height: 34px; border-radius: 8px; background: var(--raised); color: var(--text-2); display: grid;
+             place-items: center; font-size: 9.5px; font-weight: 700; letter-spacing: .02em; flex: none; text-transform: uppercase; }
+.file .actions { opacity: 0; transition: opacity .12s; }
+.file:hover .actions, .file:focus-within .actions { opacity: 1; }
+.search { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 8px; background: var(--surface);
+          box-shadow: var(--shadow); color: var(--text-3); }
+.search input { border: 0; background: none; outline: none; width: 150px; -webkit-user-select: text; user-select: text; }
+.search svg { width: 15px; height: 15px; }
+
+/* ---- clipboard */
+.clip { display: flex; gap: 12px; padding: 12px 14px; align-items: flex-start; }
+.clip + .clip { border-top: 1px solid var(--line); }
+.clip .text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+              font-size: 13px; }
+.clip .text.image { color: var(--text-2); font-style: italic; }
+.clip .actions { opacity: 0; }
+.clip:hover .actions { opacity: 1; }
+
+/* ---- sound */
+.volume { display: flex; align-items: center; gap: 12px; padding: 0 14px 14px 60px; color: var(--text-2); font-size: 12px; }
+input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; max-width: 360px; height: 22px; background: transparent; margin: 0; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) var(--v, 100%), var(--track) var(--v, 100%)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; margin-top: -6px;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 0 0 .5px rgba(0,0,0,.1); }
+.meter { display: flex; gap: 2px; align-items: flex-end; height: 14px; }
+.meter i { width: 3px; border-radius: 1px; background: var(--track); height: 100%; }
+.meter i.lit { background: var(--good); }
+
+/* ---- activity */
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.toolbar .spacer { flex: 1; }
+.logbox { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); height: calc(100vh - 230px);
+          min-height: 260px; overflow-y: auto; padding: 6px 0; font: 11.5px/1.55 ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+          -webkit-user-select: text; user-select: text; cursor: text; }
+.log { display: grid; grid-template-columns: 62px 58px 1fr; gap: 10px; padding: 1px 14px; }
+.log:hover { background: var(--raised); }
+.log .t { color: var(--text-3); }
+.log .lv { font-weight: 600; color: var(--text-3); text-transform: uppercase; font-size: 10.5px; padding-top: 1px; }
+.log.info .lv { color: var(--accent); } .log.warning .lv { color: var(--warn); } .log.error .lv, .log.critical .lv { color: var(--bad); }
+.log.warning { background: var(--warn-soft); } .log.error, .log.critical { background: var(--bad-soft); }
+.log .m { white-space: pre-wrap; word-break: break-word; }
+.log .m small { color: var(--text-3); }
+.stepper { display: flex; align-items: center; background: var(--raised); border-radius: 8px; height: 28px; }
+.stepper button { width: 28px; height: 28px; border-radius: 8px; font-size: 15px; line-height: 1; }
+.stepper button:hover { background: var(--raised-hover); }
+.stepper input { width: 34px; border: 0; background: none; text-align: center; font-weight: 600; outline: none;
+                 -webkit-user-select: text; user-select: text; }
+.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper .unit { padding-right: 10px; color: var(--text-2); font-size: 12px; }
+
+.toast { position: fixed; left: calc(50% + 106px); bottom: 20px; transform: translate(-50%, 16px); opacity: 0; pointer-events: none;
+         max-width: min(560px, calc(100% - 260px)); padding: 10px 15px; border-radius: 11px; background: var(--text); color: var(--bg);
+         font-size: 12.5px; box-shadow: 0 8px 24px rgba(0,0,0,.18); transition: opacity .2s, transform .2s; z-index: 5; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><div class="logo"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/></svg></div><b>WinLink</b></div>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <div class="status" id="status"><span class="dot"></span><span id="status-text">Searching</span></div>
+      <div class="me" id="me"></div>
+    </div>
+  </aside>
+  <main id="main">
+    <section class="page" data-page="devices">
+      <div class="head"><div class="grow"><h1>Devices</h1><p>Your computers and phones running WinLink.</p></div></div>
+      <div id="requests"></div>
+      <div id="devices"></div>
+      <h2>Different networks</h2>
+      <div class="card" id="anywhere"></div>
+    </section>
+
+    <section class="page" data-page="files">
+      <div class="head"><div class="grow"><h1>Files</h1><p>Send files and folders; they land in the other computer's Downloads.</p></div>
+        <button class="btn" data-act="open_downloads"><svg viewBox="0 0 24 24"><path d="M3.5 7.5V18a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V9a1.5 1.5 0 0 0-1.5-1.5h-7l-2-2.5H5A1.5 1.5 0 0 0 3.5 6.5z"/></svg>Downloads</button></div>
+      <div class="drop" id="drop">
+        <div class="icon on"><svg viewBox="0 0 24 24"><path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></div>
+        <div class="grow"><div class="big">Drop files or folders here</div>
+          <div class="sub"><button class="link" data-act="choose_files">Choose files</button> or <button class="link" data-act="choose_folder">a folder</button></div>
+          <div class="sendto" id="sendto"></div></div>
+      </div>
+      <h2>Transfers</h2>
+      <div class="card" id="batches"></div>
+      <h2>Received files<span class="spacer"></span><label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><input id="file-search" placeholder="Search"></label></h2>
+      <div class="card" id="received"></div>
+      <h2>Auto-clean</h2>
+      <div class="card" id="cleanup"></div>
+    </section>
+
+    <section class="page" data-page="clipboard">
+      <div class="head"><div class="grow"><h1>Clipboard</h1><p>Copy on one computer, paste on the others.</p></div>
+        <button class="btn quiet" data-act="clip_clear">Clear history</button></div>
+      <div class="card" id="clip-toggle"></div>
+      <h2>History</h2>
+      <div class="card" id="clip-history"></div>
+      <p class="note">History stays in memory only and is cleared when WinLink quits.</p>
+    </section>
+
+    <section class="page" data-page="sound">
+      <div class="head"><div class="grow"><h1>Sound</h1><p>Play any device's sound on another one.</p></div></div>
+      <div id="sound"></div>
+    </section>
+
+    <section class="page" data-page="activity">
+      <div class="head"><div class="grow"><h1>Activity</h1><p>WinLink's log, live. Useful when something doesn't work.</p></div></div>
+      <div class="toolbar">
+        <div class="seg" id="log-level"><button data-lv="all" class="on">All</button><button data-lv="info">Info and up</button><button data-lv="warning">Problems</button></div>
+        <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><input id="log-search" placeholder="Filter"></label>
+        <span class="spacer"></span>
+        <button class="btn" id="log-pause"><svg viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg>Pause</button>
+        <button class="btn" data-act="copy_logs">Copy</button>
+      </div>
+      <div class="logbox" id="logbox"></div>
+      <div class="toolbar" style="margin-top:10px"><span class="sub" id="log-count"></span><span class="spacer"></span>
+        <button class="btn quiet" data-act="open_log_folder">Log folder</button>
+        <span class="sub" style="margin-left:6px">Detailed logging</span><span id="debug-switch"></span></div>
+    </section>
+
+    <section class="page" data-page="settings">
+      <div class="head"><div class="grow"><h1>Settings</h1><p id="settings-sub"></p></div></div>
+      <div id="mac-only"><h2>On this Mac</h2><div class="card" id="notch"></div></div>
+      <div id="win-only"><h2>On this computer</h2><div class="card" id="sendto-menu"></div></div>
+      <h2>Startup</h2>
+      <div class="card" id="startup"></div>
+      <h2>Folders</h2>
+      <div class="card" id="folders"></div>
+      <h2>About</h2>
+      <div class="card facts" id="about"></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const I = {
+  devices: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="10" rx="1.6"/><path d="M1.5 18.5h16"/><rect x="18" y="8" width="4.5" height="10.5" rx="1.2"/></svg>',
+  files: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5V18a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V9a1.5 1.5 0 0 0-1.5-1.5h-7l-2-2.5H5A1.5 1.5 0 0 0 3.5 6.5z"/></svg>',
+  clipboard: '<svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5V3.8c0-.7.5-1.3 1.2-1.3h2.6c.7 0 1.2.6 1.2 1.3v.7M9.5 10h5M9.5 13.5h5"/></svg>',
+  sound: '<svg viewBox="0 0 24 24"><path d="M5 9.5h3l4.5-4v13l-4.5-4H5z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+  activity: '<svg viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg>',
+  settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/></svg>',
+  mac: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.6"/><path d="M2 19h20"/></svg>',
+  windows: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.6"/><path d="M9 20h6M12 16v4"/></svg>',
+  android: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>',
+  ios: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>',
+  globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.5 5.4 3.5 8.5s-1.1 5.9-3.5 8.5c-2.4-2.6-3.5-5.4-3.5-8.5s1.1-5.9 3.5-8.5z"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="M12 5v14m0 0-6-6m6 6 6-6"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M4.5 7h15M10 11v6M14 11v6M6.5 7l.9 12.2a1.6 1.6 0 0 0 1.6 1.5h6a1.6 1.6 0 0 0 1.6-1.5L17.5 7M9.5 7V4.5h5V7"/></svg>',
+  open: '<svg viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 18.5v-10A1.5 1.5 0 0 1 5.5 7H10"/></svg>',
+  reveal: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>',
+  copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>',
+  notch: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M8.5 4.5v1.2c0 .9.7 1.6 1.6 1.6h3.8c.9 0 1.6-.7 1.6-1.6V4.5"/></svg>',
+  rings: '<svg viewBox="0 0 48 48"><circle cx="19" cy="24" r="10"/><circle cx="29" cy="24" r="10"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg>',
+};
+const PAGES = [["devices", "Devices"], ["files", "Files"], ["clipboard", "Clipboard"], ["sound", "Sound"], ["activity", "Activity"], ["settings", "Settings"]];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const attr = esc;
+const sw = (act, on) => `<label class="switch"><input type="checkbox" data-act="${act}" ${on ? "checked" : ""}><span></span></label>`;
+const seg = (act, options, current) => `<div class="seg">${options.map(([v, l]) => `<button class="${v === current ? "on" : ""}" data-act="${act}" data-v="${v}">${esc(l)}</button>`).join("")}</div>`;
+const last = {};
+function paint(id, html) { if (last[id] !== html) { last[id] = html; $(id).innerHTML = html; } }
+function ago(ts) {
+  if (!ts) return "";
+  const s = Date.now() / 1000 - ts;
+  if (s < 10) return "just now";
+  if (s < 60) return `${Math.floor(s)} s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  const d = new Date(ts * 1000);
+  return s < 86400 ? d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : d.toLocaleDateString([], {day: "numeric", month: "short"});
+}
+
+// ---- navigation
+const store = {   // remembering the last page is a nicety; some web views don't allow storage
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+};
+let page = store.get("page") || "devices";
+function go(p) {
+  page = p; store.set("page", p);
+  document.querySelectorAll(".page").forEach((el) => el.classList.toggle("on", el.dataset.page === p));
+  document.querySelectorAll(".nav").forEach((el) => el.classList.toggle("on", el.dataset.go === p));
+  $("main").scrollTop = 0;
+  if (p === "activity") scrollLogs(true);
+}
+let badges = {};
+function paintNav() {
+  paint("nav", PAGES.map(([id, label]) => {
+    const b = badges[id];
+    return `<button class="nav ${id === page ? "on" : ""}" data-go="${id}">${I[id]}${label}${b ? `<span class="count ${b === true ? "dot" : ""}">${b === true ? "" : b}</span>` : ""}</button>`;
+  }).join(""));
+}
+
+// ---- render
+let state = null;
+function render(s) {
+  state = s;
+  const connected = s.devices.filter((d) => d.state === "on").length;
+  $("status").classList.toggle("on", connected > 0);
+  $("status-text").textContent = connected === 0 ? "Searching" : connected === 1 ? "1 connected" : `${connected} connected`;
+  $("me").textContent = `This ${s.me.kind === "mac" ? "Mac" : "PC"} · ${s.me.name}${s.me.extra || ""}`;
+  $("settings-sub").textContent = `This ${s.me.kind === "mac" ? "Mac" : "PC"} is “${s.me.name}”.`;
+  const active = s.files.batches.filter((b) => b.state === "active").length;
+  badges = {devices: s.devices.some((d) => d.state === "ask") ? true : 0, files: active || 0};
+  paintNav();
+  for (const part of [renderDevices, renderFiles, renderClipboard, renderSound, renderSettings]) {
+    try { part(s); } catch (e) { console.error(part.name, e); }   // one broken section never blanks the rest
+  }
+}
+
+function renderDevices(s) {
+  const asks = s.devices.filter((d) => d.state === "ask" || d.state === "wait");
+  paint("requests", asks.map((d) => `<div class="card ask ${d.repair ? "repair" : ""}" style="margin-bottom:12px">
+      <div class="row"><div class="icon on">${I[d.os] || I.windows}</div>
+        <div class="grow"><div class="name">${esc(d.name)}</div>
+          <div class="sub ${d.repair ? "warn" : "strong"}">${d.state === "wait" ? `Waiting for ${esc(d.name)} to allow. It should show this code.`
+            : d.repair ? "Wants to pair again. Only allow if you reinstalled WinLink on it."
+            : d.code ? `Wants to connect to this ${s.me.kind === "mac" ? "Mac" : "PC"}. Check both show the same code.` : "Wants to reconnect."}</div></div>
+        ${d.code ? `<span class="code">${esc(d.code)}</span>` : ""}
+        ${d.state === "ask" ? `<div class="actions"><button class="btn" data-act="answer" data-id="${d.id}" data-v="0">Decline</button>
+          <button class="btn primary" data-act="answer" data-id="${d.id}" data-v="1">Allow</button></div>` : ""}</div></div>`).join(""));
+  const rest = s.devices.filter((d) => d.state !== "ask" && d.state !== "wait");
+  if (!rest.length && !asks.length) {
+    paint("devices", `<div class="card empty">${I.rings}<div class="name"><span class="pulse"></span>Looking for your other computers…</div>
+      <div>Open WinLink on them. They'll appear here on the same Wi‑Fi, or anywhere once “Connect from anywhere” is on.</div></div>`);
+  } else {
+    paint("devices", `<div class="grid">${rest.map((d) => {
+      let actions = "", sub = esc(d.status), subCls = "";
+      if (d.state === "on") {
+        subCls = "good"; sub = `Connected<span class="tag">${d.route === "tailscale" ? "Tailscale" : "Wi‑Fi"}</span>`;
+        actions = `<button class="btn" data-go-files="${d.id}">${I.files}Send files</button><button class="btn quiet" data-act="disconnect" data-id="${d.id}">Disconnect</button>`;
+      } else if (d.state === "free") {
+        actions = `<button class="btn primary" data-act="connect" data-id="${d.id}">${d.trusted ? "Reconnect" : "Connect"}</button>`;
+      } else if (d.state === "away" && d.trusted) {
+        actions = `<button class="btn quiet" data-act="forget" data-id="${d.id}">Forget</button>`;
+      }
+      return `<div class="card device"><div class="top"><div class="icon ${d.state === "on" ? "on" : ""}">${I[d.os] || I.windows}</div>
+        <div class="grow"><div class="name">${esc(d.name)}</div><div class="sub ${subCls}">${sub}</div></div></div>
+        <div class="actions">${actions}</div></div>`;
+    }).join("")}</div>`);
+  }
+  const a = s.anywhere;
+  paint("anywhere", `<div class="row"><div class="icon ${a.tone === "good" ? "on" : ""}">${I.globe}</div>
+    <div class="grow"><div class="name">Connect from anywhere</div><div class="sub ${a.tone}">${esc(a.text)}</div></div>
+    <div class="actions">${a.sign_in ? `<button class="btn primary" data-act="sign_in" ${a.busy ? "disabled" : ""}>${a.busy ? "Opening…" : "Sign in"}</button>` : ""}
+      ${a.sign_out ? `<button class="btn quiet" data-act="sign_out">Sign out</button>` : ""}</div>${sw("set_anywhere", a.enabled)}</div>`);
+}
+
+function extOf(name) { const m = /\.([a-z0-9]{1,5})$/i.exec(name); return m ? m[1] : "file"; }
+function renderFiles(s) {
+  const f = s.files;
+  paint("sendto", f.targets.length > 1 ? `<span>Send to</span><div class="chips">${f.targets.map((t) =>
+    `<button class="chip ${t.id === f.target ? "on" : ""}" data-act="set_file_target" data-id="${t.id}">${esc(t.name)}</button>`).join("")}</div>`
+    : f.targets.length === 1 ? `<span>Sends to <b>${esc(f.targets[0].name)}</b></span>` : `<span>Connect a device to send files.</span>`);
+  paint("batches", f.batches.length ? f.batches.map((b) => `<div class="batch">
+      <span class="dir">${b.dir === "in" ? I.down : I.up}</span>
+      <div class="grow"><div class="name">${esc(b.name)}</div>
+        <div class="meta"><span>${b.dir === "in" ? "from" : "to"} ${esc(b.peer)}</span>${b.files ? `<span>· ${b.files}</span>` : ""}
+          <span class="${b.state === "failed" ? "bad" : b.state === "done" ? "good" : ""}">· ${esc(b.status)}</span></div>
+        ${b.state === "active" ? `<div class="bar"><i style="width:${(b.frac * 100).toFixed(1)}%"></i></div>` : ""}</div>
+      <div class="actions">
+        ${b.state === "active" ? `<button class="btn danger" data-act="cancel" data-id="${attr(b.key)}">${I.x}Cancel</button>` : ""}
+        ${b.path ? `<button class="iconbtn" title="Show" data-act="file_reveal" data-path="${attr(b.path)}">${I.reveal}</button>` : ""}
+        ${b.state !== "active" ? `<button class="iconbtn" title="Remove from list" data-act="dismiss" data-id="${attr(b.key)}">${I.x}</button>` : ""}
+      </div></div>`).join("") : `<div class="empty" style="padding:22px">No transfers yet.</div>`);
+  const q = ($("file-search").value || "").toLowerCase();
+  const rec = f.received.filter((r) => !q || r.name.toLowerCase().includes(q) || r.from.toLowerCase().includes(q));
+  paint("received", rec.length ? rec.map((r) => `<div class="file">
+      <span class="ext">${esc(extOf(r.name))}</span>
+      <div class="grow"><div class="name">${esc(r.name)}</div>
+        <div class="sub">${r.from ? `from ${esc(r.from)} · ` : ""}${esc(r.size)} · ${ago(r.at)}${r.folder && r.folder !== "." ? ` · ${esc(r.folder)}` : ""}</div></div>
+      <div class="actions">
+        <button class="iconbtn" title="Open" data-act="file_open" data-path="${attr(r.path)}">${I.open}</button>
+        <button class="iconbtn" title="Show in ${s.me.kind === "mac" ? "Finder" : s.me.os === "linux" ? "Files" : "Explorer"}" data-act="file_reveal" data-path="${attr(r.path)}">${I.reveal}</button>
+        <button class="iconbtn danger" title="Delete" data-act="file_delete" data-path="${attr(r.path)}">${I.trash}</button>
+      </div></div>`).join("") : `<div class="empty" style="padding:22px">${q ? "Nothing matches." : "Files you receive will be listed here."}</div>`);
+  const cl = s.cleanup;
+  if (document.activeElement?.id !== "days") paint("cleanup", `<div class="row"><div class="icon ${cl.enabled ? "on" : ""}">${I.trash}</div>
+      <div class="grow"><div class="name">Auto-clean received files</div><div class="sub">${esc(cl.text)}</div></div>${sw("set_cleanup", cl.enabled)}</div>
+    ${cl.enabled ? `<div class="field"><span>Keep for</span><div class="stepper">
+      <button data-act="days_step" data-v="-1">−</button><input id="days" type="number" min="1" max="365" value="${cl.days}">
+      <span class="unit">${cl.days === 1 ? "day" : "days"}</span><button data-act="days_step" data-v="1">+</button></div></div>` : ""}`);
+}
+
+function renderClipboard(s) {
+  const c = s.clipboard;
+  paint("clip-toggle", `<div class="row"><div class="icon ${c.enabled ? "on" : ""}">${I.clipboard}</div>
+    <div class="grow"><div class="name">Share clipboard</div><div class="sub">Text and images copied here appear on your other computers, and theirs here.</div>
+    ${c.problem ? `<div class="sub bad">${esc(c.problem)}</div>` : ""}</div>
+    ${sw("set_clipboard", c.enabled)}</div>`);
+  paint("clip-history", c.history.length ? c.history.map((h) => `<div class="clip">
+      <span class="dir">${h.dir === "in" ? I.down : I.up}</span>
+      <div class="grow"><div class="text ${h.kind === "image" ? "image" : ""}">${esc(h.preview) || "<i>empty</i>"}</div>
+        <div class="sub">${h.dir === "in" ? "from" : "to"} ${esc(h.peer)} · ${ago(h.at)}</div></div>
+      <div class="actions"><button class="btn" data-act="clip_copy" data-id="${h.id}">${I.copy}Copy</button>
+        <button class="iconbtn danger" title="Remove" data-act="clip_delete" data-id="${h.id}">${I.trash}</button></div></div>`).join("")
+    : `<div class="empty" style="padding:22px">Things you copy (and receive) will show up here.</div>`);
+}
+
+function renderSound(s) {
+  const so = s.sound;
+  let html = "";
+  if (so.can_send) {
+    html += `<h2 style="margin-top:0">Share this ${s.me.kind === "mac" ? "Mac" : "PC"}'s sound</h2><div class="card">
+      <div class="row"><div class="icon ${so.send.enabled ? "on" : ""}">${I.sound}</div>
+        <div class="grow"><div class="name">Share sound</div><div class="sub ${so.send.tone}">${esc(so.send.text)}</div></div>
+        ${so.send.fix === "privacy" ? `<button class="btn" data-act="open_privacy">Open settings</button>` : ""}${sw("set_audio", so.send.enabled)}</div>
+      ${so.send.targets.length ? `<div class="field"><span>Play on</span><div class="chips">${so.send.targets.map((t) =>
+        `<button class="chip ${t.id === so.send.target ? "on" : ""}" data-act="set_audio_target" data-id="${t.id}">${esc(t.name)}</button>`).join("")}</div></div>` : ""}
+      <div class="field"><span>Quality</span>${seg("set_quality", so.qualities, so.quality)}</div>
+      <div class="hint">${{auto: "Lossless on the same Wi‑Fi, CD quality over Tailscale.", lossless: "32-bit float, exactly what this computer plays. Most data (about 3 Mbit/s).",
+        cd: "16-bit, half the data of lossless. Sounds the same to most ears.", saver: "16-bit mono at half the sample rate: an eighth of the data, for weak links."}[so.quality]}</div></div>`;
+  }
+  if (so.can_receive) {
+    html += `<h2 ${so.can_send ? "" : 'style="margin-top:0"'}>Playing here</h2><div class="card">
+      <div class="row"><div class="icon ${so.recv.playing ? "on" : ""}">${I.sound}</div>
+        <div class="grow"><div class="name">${so.recv.playing ? "Playing" : "Not playing"}</div><div class="sub">${esc(so.recv.text)}</div></div>
+        ${so.recv.playing ? `<div class="meter" id="meter">${"<i></i>".repeat(8)}</div><button class="btn" data-act="stop_playing">Stop</button>` : ""}</div>
+      <div class="field"><span>Latency</span>${seg("set_latency", so.latencies, so.latency)}</div>
+      <div class="hint">${{auto: "As low as this network allows: starts around 40 ms on Wi‑Fi and only adds delay if sound breaks up.", lowest: "About 20 ms, for videos and games on good Wi‑Fi. May crackle on a busy network.",
+        low: "About 50 ms. Lip-sync stays right for video.", balanced: "About 120 ms. A safe middle ground.", smooth: "About 300 ms. Never crackles, even on weak links; good for music."}[so.latency]} Changes apply instantly.</div>
+      <div class="volume"><span style="min-width:64px">Volume</span><input type="range" id="volume" min="0" max="100" value="${Math.round(so.recv.volume * 100)}" style="--v:${Math.round(so.recv.volume * 100)}%"></div></div>`;
+  }
+  if (!so.can_send) html += `<p class="note">This computer can play sound from your other devices, but can't share its own.${so.send_hint ? ` ${esc(so.send_hint)}` : ""}</p>`;
+  if (document.activeElement?.id !== "volume") paint("sound", html);
+}
+
+function renderSettings(s) {
+  $("mac-only").classList.toggle("hidden", !s.notch.available);
+  paint("notch", `<div class="row"><div class="icon ${s.notch.enabled ? "on" : ""}">${I.notch}</div>
+    <div class="grow"><div class="name">Drop files on the notch</div><div class="sub">Drag files or folders to the top of the screen and drop them on a device.</div></div>
+    ${sw("set_notch", s.notch.enabled)}</div>`);
+  $("win-only").classList.toggle("hidden", !s.sendto?.available);
+  if (s.sendto?.available) paint("sendto-menu", `<div class="row"><div class="icon ${s.sendto.enabled ? "on" : ""}">${I.files}</div>
+    <div class="grow">${s.me.os === "linux"
+      ? `<div class="name">"Send with WinLink" in the right-click menu</div><div class="sub">Right-click files or folders: in Files, Scripts › WinLink › a device; in Dolphin, Send with WinLink; in Nemo, Send to a device with WinLink.</div>`
+      : `<div class="name">"Send to" in the right-click menu</div><div class="sub">Right-click files or folders in Explorer, choose Send to (on Windows 11: Show more options, then Send to), then WinLink and a device.</div>`}
+    ${s.sendto.status ? `<div class="sub ${/^Couldn|didn't/.test(s.sendto.status) ? "bad" : "strong"}">${esc(s.sendto.status)}</div>` : ""}</div>
+    ${sw("set_sendto", s.sendto.enabled)}</div>`);
+  const st = s.startup, kind = st.tray_kind === "menubar" ? "menu bar" : "tray";
+  paint("startup", `<div class="row"><div class="icon ${st.login ? "on" : ""}">${I.activity}</div>
+      <div class="grow"><div class="name">Open at login</div><div class="sub">WinLink starts when you log in, without a window${st.tray_ok && st.tray ? `, in the ${kind}` : ""}, and reconnects to your devices.</div>
+      ${st.login_error ? `<div class="sub bad">${esc(st.login_error)}</div>` : ""}</div>
+      ${sw("set_autostart", st.login)}</div>
+    <div class="row"><div class="icon ${st.tray && st.tray_ok ? "on" : ""}">${I.windows}</div>
+      <div class="grow"><div class="name">${st.tray_kind === "menubar" ? "Icon in the menu bar" : "Icon in the tray"}</div>
+      <div class="sub">${st.tray_kind === "menubar" ? "Open WinLink, see who's connected and share sound from the top of the screen."
+        : `See who's connected and share sound from the ${s.me.os === "windows" ? "notification area (bottom right)" : "panel"}. Minimising WinLink hides it there.`}</div>
+      ${st.tray_note ? `<div class="sub bad">${esc(st.tray_note)}</div>` : ""}</div>
+      ${sw("set_tray", st.tray)}</div>`);
+  paint("folders", `<div class="row"><div class="icon">${I.files}</div><div class="grow"><div class="name">Received files</div><div class="sub">${esc(s.files.downloads)}</div></div>
+      <button class="btn" data-act="open_downloads">Open</button></div>
+    <div class="row"><div class="icon">${I.activity}</div><div class="grow"><div class="name">Log files</div><div class="sub">Kept for troubleshooting; the newest is shown on the Activity page.</div></div>
+      <button class="btn" data-act="open_log_folder">Open</button></div>`);
+  paint("debug-switch", sw("set_debug_log", s.debug_log));
+  const ab = s.about, fact = (k, v) => `<div class="row"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  paint("about", fact("Version", esc(ab.version))
+    + fact(`This ${s.me.kind === "mac" ? "Mac" : "PC"}`, `${esc(s.me.name)} · ID <span class="mono">${esc(ab.id.slice(0, 4))} ${esc(ab.id.slice(4, 8))}</span>`)
+    + fact("Paired with", ab.paired.length ? esc(ab.paired.join(", ")) : "No devices yet")
+    + fact("Pairing", "An X25519 key exchange, confirmed by the 4-digit code both devices show. A device that isn't paired gets nothing.")
+    + fact("Connections", "Each one proves it holds the pairing key, then everything is encrypted with ChaCha20‑Poly1305 and new keys. That's on Wi-Fi too, not only over Tailscale.")
+    + fact("Network", `TCP ${ab.port} for connections; UDP 50556 and Bonjour to find devices nearby; Tailscale for other networks. Same Wi-Fi is always used when it's there.`));
+}
+
+// ---- live log
+const logs = []; let logLevel = "all", logPaused = false, pendingLogs = [];
+const LV = {debug: 0, info: 1, warning: 2, error: 3, critical: 3};
+function logRow(l) {
+  const t = new Date(l.t * 1000).toLocaleTimeString([], {hour12: false});
+  return `<div class="log ${l.level}"><span class="t">${t}</span><span class="lv">${l.level === "warning" ? "warn" : l.level}</span><span class="m">${esc(l.msg)}</span></div>`;
+}
+function shown(l) {
+  const q = ($("log-search").value || "").toLowerCase();
+  return (logLevel === "all" || LV[l.level] >= LV[logLevel]) && (!q || l.msg.toLowerCase().includes(q));
+}
+function redrawLogs() {
+  const box = $("logbox"), list = logs.filter(shown);
+  box.innerHTML = list.length ? list.map(logRow).join("") : `<div class="empty" style="padding:30px">${logs.length ? "Nothing matches." : "Nothing logged yet."}</div>`;
+  $("log-count").textContent = `${list.length} of ${logs.length} lines${logPaused ? " · paused" : ""}`;
+  scrollLogs(true);
+}
+function scrollLogs(force) { const b = $("logbox"); if (force || b.scrollHeight - b.scrollTop - b.clientHeight < 60) b.scrollTop = b.scrollHeight; }
+function addLogs(lines) {
+  if (logPaused) { pendingLogs.push(...lines); $("log-count").textContent = `${pendingLogs.length} new lines waiting · paused`; return; }
+  const box = $("logbox"), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  if (!logs.length) box.innerHTML = "";
+  logs.push(...lines);
+  if (logs.length > 1000) { logs.splice(0, logs.length - 1000); redrawLogs(); return; }
+  box.insertAdjacentHTML("beforeend", lines.filter(shown).map(logRow).join(""));
+  while (box.children.length > 1000) box.firstChild.remove();
+  $("log-count").textContent = `${logs.filter(shown).length} of ${logs.length} lines`;
+  if (atBottom) scrollLogs(true);
+}
+$("log-level").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  logLevel = b.dataset.lv; [...$("log-level").children].forEach((x) => x.classList.toggle("on", x === b)); redrawLogs();
+});
+$("log-search").addEventListener("input", redrawLogs);
+$("log-pause").addEventListener("click", () => {
+  logPaused = !logPaused;
+  $("log-pause").innerHTML = (logPaused ? I.play + "Resume" : I.pause + "Pause");
+  if (!logPaused) { const p = pendingLogs; pendingLogs = []; logs.push(...p); redrawLogs(); } else redrawLogs();
+});
+
+function level(x) {
+  const m = $("meter"); if (!m) return;
+  [...m.children].forEach((bar, i) => bar.classList.toggle("lit", x > (i + 1) / 9));
+}
+let toastTimer;
+function toast(text, seconds = 5) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), seconds * 1000);
+}
+
+// ---- talking to Python (pywebview); sample data in a plain browser
+const api = (name, ...args) => window.pywebview?.api?.[name]?.(...args);
+document.addEventListener("click", (e) => {
+  const nav = e.target.closest("[data-go]"); if (nav) return go(nav.dataset.go);
+  const sendBtn = e.target.closest("[data-go-files]"); if (sendBtn) { api("set_file_target", sendBtn.dataset.goFiles); return go("files"); }
+  const el = e.target.closest("[data-act]");
+  if (!el || el.tagName === "INPUT") return;
+  const act = el.dataset.act;
+  if (act === "answer") api(act, el.dataset.id, el.dataset.v === "1");
+  else if (act === "days_step") { const i = $("days"), v = Math.max(1, Math.min(365, (+i.value || 7) + +el.dataset.v)); i.value = v; api("set_cleanup_days", v); }
+  else if (el.dataset.v !== undefined) api(act, el.dataset.v);
+  else if (el.dataset.path) api(act, el.dataset.path);
+  else if (el.dataset.id) api(act, el.dataset.id);
+  else api(act);
+});
+document.addEventListener("change", (e) => {
+  if (e.target.matches("input[type=checkbox][data-act]")) api(e.target.dataset.act, e.target.checked);
+  if (e.target.id === "days") { const v = Math.max(1, Math.min(365, Math.round(+e.target.value) || 7)); e.target.value = v; api("set_cleanup_days", v); e.target.blur(); }
+});
+document.addEventListener("keydown", (e) => { if (e.target.id === "days" && e.key === "Enter") e.target.blur(); });
+document.addEventListener("input", (e) => {
+  if (e.target.id === "volume") { e.target.style.setProperty("--v", e.target.value + "%"); api("set_volume", e.target.value / 100); }
+  if (e.target.id === "file-search" && state) renderFiles(state);
+});
+const drop = $("drop");
+["dragenter", "dragover"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); if (t === "drop" || !e.relatedTarget) drop.classList.remove("over"); }));
+setInterval(() => state && (renderFiles(state), renderClipboard(state)), 15000);
+
+const media = matchMedia("(prefers-color-scheme: dark)");
+const applyTheme = () => {
+  const forced = document.documentElement.dataset.theme;
+  document.documentElement.classList.toggle("dark", forced ? forced === "dark" : media.matches);
+};
+media.addEventListener("change", applyTheme); applyTheme();
+paintNav(); go(page);
+
+window.winlink = { render, level, toast, logs: addLogs };
+let sampleTimer = null;
+window.addEventListener("pywebviewready", () => { clearInterval(sampleTimer); api("ready"); });
+setTimeout(() => {               // opened in a browser: show sample data (#page=sound opens a page)
+  if (window.pywebview) return;
+  showSample();
+  const m = location.hash.match(/page=(\w+)/);
+  if (m) {                      // a screenshot: no fades, no moving meter
+    const still = document.createElement("style");
+    still.textContent = "*, *::before, *::after { transition: none !important; animation: none !important; }";
+    document.head.appendChild(still);
+    clearInterval(sampleTimer);
+    level(.62);
+    go(m[1]);
+  }
+}, 800);
+function showSample() {
+  const now = Date.now() / 1000;
+  render({
+    me: {name: "Sam’s MacBook Air", kind: "mac"},
+    devices: [
+      {id: "1", name: "Msi", os: "windows", state: "on", route: "tailscale", status: "Connected", trusted: true},
+      {id: "2", name: "Studio PC", os: "windows", state: "on", route: "wifi", status: "Connected", trusted: true},
+      {id: "5", name: "Pixel 9", os: "android", state: "on", route: "wifi", status: "Connected", trusted: true},
+      {id: "4", name: "Office iMac", os: "mac", state: "away", status: "Offline", trusted: true},
+      {id: "3", name: "Studio Laptop", os: "windows", state: "ask", code: "4821", trusted: false},
+    ],
+    anywhere: {enabled: true, tone: "good", text: "On · signed in until 30 Apr", sign_in: false, sign_out: true},
+    clipboard: {enabled: true, history: [
+      {id: 3, dir: "in", kind: "text", preview: "Meeting moved to 4:30, same room as last week. Bring the gerbers for the 12V driver board.", peer: "Msi", at: now - 40},
+      {id: 2, dir: "out", kind: "image", preview: "Image · 1470 × 956", peer: "Msi", at: now - 600},
+      {id: 1, dir: "out", kind: "text", preview: "https://login.tailscale.com/admin/machines", peer: "Msi, Studio PC", at: now - 5400}]},
+    files: {targets: [{id: "1", name: "Msi"}, {id: "2", name: "Studio PC"}, {id: "all", name: "All devices"}], target: "1", downloads: "/Users/sam/Downloads",
+      received: [
+        {path: "/a", name: "12V G.zip", size: "29.9 KB", at: now - 300, from: "Msi", folder: "12V_LM_DRV"},
+        {path: "/b", name: "Quarterly report final v3.pdf", size: "4.2 MB", at: now - 4000, from: "Studio PC", folder: "."},
+        {path: "/c", name: "IMG_2041.HEIC", size: "3.1 MB", at: now - 90000, from: "Msi", folder: "."}],
+      batches: [
+        {key: "a", dir: "out", name: "12V_LM_DRV", peer: "Msi", state: "active", frac: .42, status: "42% · retrying: no response in time", files: "17 of 44 files", size: "2.1 MB"},
+        {key: "b", dir: "in", name: "Quarterly report final v3.pdf", peer: "Studio PC", state: "done", frac: 1, status: "Saved · 4.2 MB", path: "/x", files: ""},
+        {key: "c", dir: "in", name: "Holiday photos", peer: "Msi", state: "cancelled", frac: .3, status: "Cancelled on Msi · removed", files: "12 of 80 files"}]},
+    cleanup: {enabled: true, days: 7, text: "On · 12 received files (48.3 MB) · next goes to the Trash in 3 days"},
+    sound: {can_send: true, can_receive: true, quality: "auto", latency: "auto",
+      send: {enabled: false, text: "Off. Turn it on to play this Mac's sound on another device.", tone: "muted",
+        targets: [{id: "1", name: "Msi"}, {id: "2", name: "Studio PC"}, {id: "5", name: "Pixel 9"}], target: "5", fix: null},
+      qualities: [["auto", "Auto"], ["lossless", "Lossless"], ["cd", "CD quality"], ["saver", "Data saver"]],
+      latencies: [["auto", "Auto"], ["lowest", "Lowest"], ["low", "Low"], ["balanced", "Balanced"], ["smooth", "Smooth"]],
+      recv: {playing: true, text: "Playing from Studio PC · 48 kHz 32-bit float · 45 ms behind", volume: .8, from: "Studio PC"}},
+    notch: {available: true, enabled: true}, sendto: {available: false, enabled: true}, debug_log: false,
+    about: {version: "2026.11.2", id: "3f9c2e1d7b8a4c605e1f2a9d8c7b6e54", port: 50555, paired: ["Msi", "Pixel 9", "Studio PC"]},
+    startup: {login: true, login_error: "", tray: true, tray_ok: true, tray_kind: "menubar", tray_note: ""},
+  });
+  addLogs([
+    {n: 1, t: now - 70, level: "info", msg: "WinLink started on Sam’s MacBook Air (mac)"},
+    {n: 2, t: now - 64, level: "info", msg: "connected to Pixel 9 via wifi (192.168.1.42)"},
+    {n: 3, t: now - 58, level: "info", msg: "sent Quarterly report final v3.pdf (4401152 bytes) to Studio PC via wifi (192.168.1.20) in 0.4s"},
+    {n: 4, t: now - 45, level: "warning", msg: "sending 12V_LM_DRV/gerbers.zip to Msi stopped at 39% (sending: no response in time); resuming"},
+    {n: 5, t: now - 38, level: "info", msg: "12V_LM_DRV/gerbers.zip to Msi moved from Tailscale to Wi-Fi at 41%"},
+    {n: 6, t: now - 30, level: "info", msg: "Msi: moved from Tailscale to Wi-Fi"},
+    {n: 7, t: now - 22, level: "info", msg: "keeping the computer awake: playing sound from Studio PC"},
+    {n: 8, t: now - 12, level: "warning", msg: "203.0.113.7 failed to prove it's paired; ignoring that address for a minute"}]);
+  let t = 0; sampleTimer = setInterval(() => level(.45 + .35 * Math.sin(t += .5)), 120);
+}
+</script>
+</body>
+</html>

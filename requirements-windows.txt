@@ -1,0 +1,9 @@
+pywebview
+pythonnet
+cryptography
+pyaudiowpatch
+sounddevice
+numpy
+zeroconf
+pystray
+pillow
