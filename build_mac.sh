@@ -25,6 +25,17 @@ if [ -d "$L/bin/Deskflow.app" ]; then
   mkdir -p build/dist/WinLink.app/Contents/Library
   ditto "$L/bin/Deskflow.app" build/dist/WinLink.app/Contents/Library/Deskflow.app
   cp "$L"/bin/Deskflow-*.txt build/dist/WinLink.app/Contents/Library/ 2>/dev/null || true   # its licence and source
+  # Re-sign Deskflow with WinLink's identity, inside out and without the hardened runtime: macOS won't
+  # load its Qt frameworks into deskflow-core if the two end up signed by different teams ("different
+  # Team IDs"), and the --deep below doesn't reach into Contents/Library.
+  D=build/dist/WinLink.app/Contents/Library/Deskflow.app
+  find "$D/Contents/Frameworks" "$D/Contents/PlugIns" -name '*.dylib' -type f -exec \
+    codesign --force --timestamp=none -s "${WINLINK_SIGN_IDENTITY:--}" {} +
+  for f in "$D"/Contents/Frameworks/*.framework "$D"/Contents/MacOS/*; do
+    [ "$f" = "$D/Contents/MacOS/Deskflow" ] || codesign --force --timestamp=none -s "${WINLINK_SIGN_IDENTITY:--}" "$f"
+  done
+  codesign --force --timestamp=none -s "${WINLINK_SIGN_IDENTITY:--}" "$D"
+  "$D/Contents/MacOS/deskflow-core" --version > /dev/null   # stop here if it still can't start
 fi
 codesign --force --deep --timestamp=none -s "${WINLINK_SIGN_IDENTITY:--}" build/dist/WinLink.app
 rm -rf WinLink.app && ditto build/dist/WinLink.app WinLink.app
