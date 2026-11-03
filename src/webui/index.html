@@ -476,6 +476,10 @@ function renderKvm(s) {
           ${placed.map(tile).join("")}</div>
         <div class="tray" id="kvm-tray">${waiting.length ? waiting.map(tile).join("") : `<span class="sub">${k.computers.length ? "Drag a screen here to take it out." : "Connect another Mac or PC to place it here."}</span>`}</div>
         <p class="hint">Arrange the screens the way they stand on your desk. Screens that touch are linked: the pointer moves across their shared edge.</p></div>`;
+      const mac = k.me.os === "mac";
+      h += `<div class="row"><div class="grow"><div class="name">Swap Ctrl and ⌘ between Mac and PC</div>
+        <div class="sub">${mac ? "⌘C on this Mac is Ctrl+C on a PC (and Ctrl is the Windows key there)."
+          : "Ctrl+C on this PC is ⌘C on a Mac (and the Windows key is Ctrl there)."} Off: every key stays as it is.</div></div>${sw("kvm_swap_keys", k.swap_keys)}</div>`;
     }
     h += `<div class="row"><div class="grow"><div class="name">Let other computers control this one</div>
       <div class="sub">When a paired computer shares its keyboard and mouse and places this one next to it.</div></div>${sw("kvm_allow", k.allow)}</div>`;
@@ -660,14 +664,14 @@ function renderFiles(s) {
 function renderClipboard(s) {
   const c = s.clipboard;
   paint("clip-toggle", `<div class="row"><div class="icon ${c.enabled ? "on" : ""}">${I.clipboard}</div>
-    <div class="grow"><div class="name">Share clipboard</div><div class="sub">Text and images copied here appear on your other computers, and theirs here.</div>
+    <div class="grow"><div class="name">Share clipboard</div><div class="sub">Text, images and files copied here appear on your other computers, and theirs here. Files travel only when you paste them${s.me.kind === "mac" ? " (⌘V in Finder)" : ""}.</div>
     ${c.problem ? `<div class="sub bad">${esc(c.problem)}</div>` : ""}</div>
     ${sw("set_clipboard", c.enabled)}</div>`);
   paint("clip-history", c.history.length ? c.history.map((h) => `<div class="clip">
       <span class="dir">${h.dir === "in" ? I.down : I.up}</span>
       <div class="grow"><div class="text ${h.kind === "image" ? "image" : ""}">${esc(h.preview) || "<i>empty</i>"}</div>
         <div class="sub">${h.dir === "in" ? "from" : "to"} ${esc(h.peer)} · ${ago(h.at)}</div></div>
-      <div class="actions"><button class="btn" data-act="clip_copy" data-id="${h.id}">${I.copy}Copy</button>
+      <div class="actions">${h.save ? `<button class="btn" data-act="clip_save" data-id="${h.id}" title="Save in Downloads">${I.down}Save</button>` : ""}<button class="btn" data-act="clip_copy" data-id="${h.id}">${I.copy}Copy</button>
         <button class="iconbtn danger" title="Remove" data-act="clip_delete" data-id="${h.id}">${I.trash}</button></div></div>`).join("")
     : `<div class="empty" style="padding:22px">Things you copy (and receive) will show up here.</div>`);
 }
@@ -854,6 +858,7 @@ function showSample() {
     ],
     anywhere: {enabled: true, tone: "good", text: "On · signed in until 30 Apr", sign_in: false, sign_out: true},
     clipboard: {enabled: true, history: [
+      {id: 4, dir: "in", kind: "files", preview: "12V_LM_DRV + 2 more · 48.1 MB", peer: "Studio PC", at: now - 20, save: true},
       {id: 3, dir: "in", kind: "text", preview: "Meeting moved to 4:30, same room as last week. Bring the gerbers for the 12V driver board.", peer: "Msi", at: now - 40},
       {id: 2, dir: "out", kind: "image", preview: "Image · 1470 × 956", peer: "Msi", at: now - 600},
       {id: 1, dir: "out", kind: "text", preview: "https://login.tailscale.com/admin/machines", peer: "Msi, Studio PC", at: now - 5400}]},
@@ -874,7 +879,7 @@ function showSample() {
       latencies: [["auto", "Auto"], ["lowest", "Lowest"], ["low", "Low"], ["balanced", "Balanced"], ["smooth", "Smooth"]],
       recv: {playing: true, text: "Playing from Studio PC · 48 kHz 32-bit float · 45 ms behind", volume: .8, from: "Studio PC"}},
     notch: {available: true, enabled: true}, sendto: {available: false, enabled: true}, debug_log: false,
-    kvm: {available: true, share: true, allow: true, role: "server", following: null, problem: "", needs_accessibility: false,
+    kvm: {available: true, share: true, allow: true, swap_keys: true, role: "server", following: null, problem: "", needs_accessibility: false,
       status: "Move the pointer off this screen's edge to reach the computers placed below.", download: "",
       me: {name: "Sam’s MacBook Air", os: "mac"},
       computers: [{id: "1", name: "Msi", os: "windows", pos: [1, 0], text: "Connected", on: true, reachable: true},

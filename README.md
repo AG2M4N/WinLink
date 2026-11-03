@@ -42,7 +42,7 @@
 
 | | |
 |---|---|
-| **Clipboard** | Copy text or an image on one device, paste it on the others. A history of the last 50 items lets you copy any of them again. |
+| **Clipboard** | Copy text, an image or files on one device, paste them on the others. Files travel only when you paste them. A history of the last 50 items lets you copy any of them again. |
 | **Files** | Drop files or whole folders on the window, the Mac's notch, Explorer's *Send to* menu or a Linux file manager. They land in the other device's Downloads. Transfers resume after drops, can be cancelled from either side, and move to Wi‑Fi mid-way when it becomes available. |
 | **Sound** | Play any computer's sound on any other device, phones included: lossless on the same Wi‑Fi, about 20–50 ms behind. Android phones can share their sound too. |
 | **Finds devices by itself** | No IP addresses. Bonjour and broadcast on the local network, including phone hotspots and IPv6-only networks. |
@@ -152,8 +152,18 @@ arrived. Dropped connections resume where they stopped. Optional **auto-clean** 
 to the Trash after a number of days (only files WinLink saved, and never ones you edited or moved).
 
 ### Clipboard
-Text and images copied on one device appear on the others. Files copied in Finder or Explorer aren't
-shared through the clipboard (drop them on WinLink instead). On Android, sending the phone's clipboard is
+Text and images copied on one device appear on the others. Files and folders copied in Finder,
+Explorer or a Linux file manager work too, but only their names go across when you copy: the files
+themselves travel when you paste them.
+
+- **Windows:** paste anywhere (Explorer, an email…). The paste waits while the files come, with
+  progress in WinLink's Files page.
+- **Mac:** press ⌘V in a Finder window and the files come straight into that folder. macOS can't wait
+  for a paste the way Windows can, so WinLink watches for ⌘V in Finder: it needs WinLink allowed under
+  *Privacy & Security → Accessibility* (as keyboard sharing does), and asks once to talk to Finder.
+- **Anywhere** (and on Linux, which can't wait for a paste): *Save* on the Clipboard page puts them in Downloads.
+
+Phones don't take copied files (send them instead). On Android, sending the phone's clipboard is
 one tap: the *Send clipboard* button, the Quick Settings tile or the notification button.
 
 ### Sound
@@ -190,6 +200,9 @@ with images and history). Its files live in WinLink's settings folder, so a Desk
 isn't touched.
 
 - On a **Mac**, allow WinLink under *Privacy & Security → Accessibility* (WinLink shows a button).
+- **Ctrl and ⌘ swap** between a Mac and a PC (on by default, *Swap Ctrl and ⌘* to turn it off): ⌘C on
+  the Mac's keyboard is Ctrl+C on the PC, and Ctrl+C on the PC's keyboard is ⌘C on the Mac. The
+  computer whose keyboard you use decides.
 - The other computers follow automatically; turn off *Let other computers control this one* to refuse.
 - It works wherever WinLink connects: same Wi-Fi, the Tailscale app, WinLink's built-in Tailscale, and
   networks that only let one computer reach the other. WinLink picks the quickest way: straight to the

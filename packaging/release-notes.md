@@ -1,11 +1,11 @@
-**A snappier pointer, and the Android app built with every release.**
+**Copy files on one computer, paste them on another.**
+
+**Clipboard**
+- Files and folders copied in Finder, Explorer or a Linux file manager now go across too, and they travel only when you paste them: copying sends just their names. On Windows, paste anywhere; on a Mac, ⌘V in a Finder window brings them into that folder (needs WinLink under Accessibility); anywhere, *Save* on the Clipboard page puts them in Downloads.
+- Fixed: Deskflow's own clipboard sharing was still running alongside WinLink's, because Deskflow ignored the setting that turns it off. It's really off now.
 
 **Keyboard and mouse**
-- WinLink now picks the quickest way for the pointer: straight to the other computer (same Wi-Fi or the Tailscale app), else through the built-in Tailscale's helper, else over WinLink's own link. Before, every movement went through WinLink twice.
-- Each computer shows the pointer's delay and how it travels, e.g. *Connected · 4 ms · Wi-Fi* or *38 ms · Tailscale, direct*. **"Tailscale, relayed"** means Tailscale couldn't connect the two directly and uses one of its relay servers, which is what makes the pointer lag: allow WinLink's `linkts` helper through the firewall when asked (or UDP port 41642).
-- The built-in Tailscale now uses a fixed port (UDP 41642) that firewalls and routers can allow, so devices connect directly more often.
-
-**Android:** `WinLink.apk` is now built here with the other downloads, signed with WinLink's own key. **Once only:** uninstall the old WinLink from the phone before installing this one (it was signed by Expo's build service, and Android won't update across keys), then pair it again. Updates after this install over the top as usual.
+- **Swap Ctrl and ⌘** between a Mac and a PC (on by default): ⌘C on the Mac's keyboard is Ctrl+C on the PC, and the other way round. Turn it off under *Share this Mac's keyboard and mouse*.
 
 **Downloads**
 | System | File | How |

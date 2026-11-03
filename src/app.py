@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import queue
+import shutil
 import struct
 import subprocess
 import sys
@@ -73,6 +74,8 @@ def human(n):
 def item_hash(item):
     if item["kind"] == "text":
         data = item["text"].replace("\r\n", "\n").encode("utf-8", "ignore")
+    elif item["kind"] == "files":
+        data = "\0".join(item.get("paths") or [item.get("id", "")]).encode("utf-8", "ignore")
     else:
         data = item.get("png") or item.get("bmp") or b""
     return hashlib.sha1(data).hexdigest()
@@ -86,6 +89,24 @@ def image_size(item):
         w, h = struct.unpack("<ii", bmp[18:26])
         return w, abs(h)
     return None
+
+
+def clip_item(msg):
+    """A clipboard item from a (cleaned) message."""
+    kind = msg.get("kind", "text")
+    if kind == "text":
+        return {"kind": "text", "text": msg.get("text", "")}
+    if kind == "files":
+        return {k: msg[k] for k in ("kind", "id", "names", "count", "size")}
+    return {"kind": "image", **{k: base64.b64decode(msg[k]) for k in ("png", "bmp") if msg.get(k)}}
+
+
+def files_preview(item):
+    names = item.get("names") or []
+    first = names[0] if names else "Files"
+    more = f" + {len(names) - 1} more" if len(names) > 1 else ""
+    size = item.get("size", -1)
+    return f"{first}{more}" + (f" · {human(size)}" if size >= 0 else "")
 
 
 def reveal(path):
@@ -241,6 +262,9 @@ class Api(metaclass=_SafeMethods):
     def clip_delete(self, cid):
         self._app.clip_delete(int(cid))
 
+    def clip_save(self, cid):
+        self._app.clip_save(int(cid))
+
     def clip_clear(self):
         self._app.clip_history.clear()
         self._app.dirty.set()
@@ -342,6 +366,9 @@ class Api(metaclass=_SafeMethods):
     def kvm_allow(self, on):
         self._app.kvm.set_allow(bool(on))
 
+    def kvm_swap_keys(self, on):
+        self._app.kvm.set_swap_keys(bool(on))
+
     def kvm_get(self):
         webbrowser.open(kvm.DOWNLOAD_URL)
         self._app.toast("Install Deskflow, then come back: WinLink finds it by itself.", 8)
@@ -395,6 +422,10 @@ class App:
         self.clip_reset = threading.Event()
         self.clip_jobs = queue.Queue()              # work for the clipboard thread
         self.clip_history = collections.deque(maxlen=CLIP_HISTORY)
+        self.clip_remote = {}                       # offer id -> another computer's copied files (names, from)
+        self.pasting = set()                        # offer ids being fetched right now
+        self.clip = None
+        self.paste_monitor = None
         self.clip_next = 0
         self.file_target = None
         self.sign_in_busy = False
@@ -492,6 +523,8 @@ class App:
                     self._show_window()
         if IS_MAC and self.settings.data.get("notch"):
             self.set_notch(True)
+        if IS_MAC and not self.headless:
+            self._watch_mac_paste()
         try:
             sendto.HandoffServer(net.config_dir(), self._handoff)
         except OSError:
@@ -807,7 +840,7 @@ class App:
             "devices": devices,
             "anywhere": self._anywhere_state(),
             "clipboard": {"enabled": bool(self.settings["clipboard"]), "problem": self.clip_problem, "history": [
-                {k: v for k, v in e.items() if k in ("id", "dir", "kind", "preview", "peer", "at")}
+                {k: v for k, v in e.items() if k in ("id", "dir", "kind", "preview", "peer", "at", "save")}
                 for e in reversed(self.clip_history)]},
             "files": {"targets": targets, "target": self.file_target, "batches": self._batches_state(),
                       "received": self._received_state(), "downloads": node.downloads},
@@ -960,37 +993,45 @@ class App:
                     self.dirty.set()
             self._clipboard_history_only()
             return
+        self.clip = clip
+        pump = getattr(clip, "pump", None)            # Windows: answers "paste these files now" (on_render)
+        if pump is not None:
+            clip.on_render = self._paste_here
         last_seq, last_hash = clip.seq(), None
         while True:
             try:
-                job = self.clip_jobs.get(timeout=0.35)
+                job = self.clip_jobs.get(timeout=0.05 if pump else 0.35)
             except queue.Empty:
                 job = None
             try:
+                if pump is not None:
+                    pump()
                 if job and job[0] == "in":                 # from another computer
                     _, peer, msg = job
-                    item = {"kind": msg.get("kind", "text")}
-                    if item["kind"] == "text":
-                        item["text"] = msg.get("text", "")
-                    else:
-                        for key in ("png", "bmp"):
-                            if msg.get(key):
-                                item[key] = base64.b64decode(msg[key])
+                    item = clip_item(msg)
                     h = item_hash(item)
                     if h == last_hash:                    # already have it (it came round another way)
                         continue
                     last_hash = h
+                    if item["kind"] == "files":
+                        self._remote_files(peer, item)
                     last_seq = clip.write(item)
                     self._remember_clip("in", item, peer.name)
+                    if item["kind"] == "files":
+                        self._files_arrived(peer, item)
                     # pass it on, so every connected computer has the same clipboard, not just this one
-                    if self.settings["clipboard"] and any(p.id != peer.id for p in self.node.connected()):
+                    # (not files: only the computer they're on can send them)
+                    elif self.settings["clipboard"] and any(p.id != peer.id for p in self.node.connected()):
                         self.node.send_clip(item, exclude=peer.id)
                     continue
                 if job and job[0] == "put":               # copied again from history (or the log)
                     _, item, share = job
+                    if item["kind"] == "files" and item.get("paths"):     # (offers expire: a fresh one)
+                        item = self.node.offer_files(item["paths"])
                     last_hash = item_hash(item)
                     last_seq = clip.write(item)
-                    if share and self.settings["clipboard"] and self.node.connected():
+                    if share and self.settings["clipboard"] and self.node.connected() and \
+                            (item["kind"] != "files" or item.get("paths")):
                         self.node.send_clip(item)
                     continue
                 if self.clip_reset.is_set():            # just switched on: don't send old stuff
@@ -1004,6 +1045,14 @@ class App:
                     continue
                 item = clip.read()
                 if not item:
+                    continue
+                if item["kind"] == "files":               # only their names go now; the files, when pasted
+                    h = item_hash(item)
+                    if h != last_hash:
+                        last_hash = h
+                        item = self.node.offer_files(item["paths"])
+                        self.node.send_clip(item)
+                        self._remember_clip("out", item, ", ".join(p.name for p in self.node.connected()))
                     continue
                 size = len(item.get("text", "")) if item["kind"] == "text" else \
                     len(item.get("png") or b"") + len(item.get("bmp") or b"")
@@ -1025,13 +1074,9 @@ class App:
             try:
                 if job[0] == "in":
                     _, peer, msg = job
-                    item = {"kind": msg.get("kind", "text")}
-                    if item["kind"] == "text":
-                        item["text"] = msg.get("text", "")
-                    else:
-                        for key in ("png", "bmp"):
-                            if msg.get(key):
-                                item[key] = base64.b64decode(msg[key])
+                    item = clip_item(msg)
+                    if item["kind"] == "files":
+                        self._remote_files(peer, item)
                     self._remember_clip("in", item, peer.name)
                 elif job[0] == "put" and job[2] and self.node.connected():
                     self.node.send_clip(job[1])
@@ -1041,12 +1086,15 @@ class App:
     def _remember_clip(self, direction, item, peer):
         if item["kind"] == "text":
             preview = " ".join(item["text"].split())[:200]
+        elif item["kind"] == "files":
+            preview = files_preview(item)
         else:
             dims = image_size(item)
             preview = f"Image · {dims[0]} × {dims[1]}" if dims else "Image"
         self.clip_next += 1
         self.clip_history.append({"id": self.clip_next, "dir": direction, "kind": item["kind"], "preview": preview,
-                                  "peer": peer, "at": time.time(), "item": item})
+                                  "peer": peer, "at": time.time(), "item": item,
+                                  "save": direction == "in" and item["kind"] == "files"})
         # keep images from eating memory: drop the oldest image data beyond the cap
         total = 0
         for e in reversed(self.clip_history):
@@ -1064,6 +1112,108 @@ class App:
         self.clip_jobs.put(("put", entry["item"], True))
         self.toast("Copied. It's on the clipboard here" + (" and on your other computers." if
                    self.settings["clipboard"] and self.node.connected() else "."))
+
+    # ---- copied files: they travel when pasted
+    def _remote_files(self, peer, item):
+        item["from"] = peer.id
+        self.clip_remote[item["id"]] = item
+        while len(self.clip_remote) > CLIP_HISTORY:
+            self.clip_remote.pop(next(iter(self.clip_remote)))
+
+    def _files_arrived(self, peer, item):
+        """Another computer copied files: they're on this clipboard now, to be fetched when pasted."""
+        what = "them" if len(item["names"]) > 1 else "it"
+        if IS_MAC:
+            if kvm.mac_accessibility_ok() is False:
+                self.toast(f"{peer.name} copied {files_preview(item)}. To paste {what} with ⌘V in Finder, allow "
+                           "WinLink under Privacy & Security › Accessibility. Or use Save on the Clipboard page.", 10)
+        elif not IS_WIN:
+            self.toast(f"{peer.name} copied {files_preview(item)}. Save {what} here from WinLink's Clipboard page.", 8)
+
+    def _fetch(self, oid, folder):
+        """Fetch an offer's files into folder (blocks). Returns their paths, or None (and says why)."""
+        item = self.clip_remote.get(oid)
+        peer = self.node.peers.get(item["from"]) if item else None
+        if peer is None or peer.control is None:
+            self.toast(f"Can't paste: {peer.name if peer else 'the other computer'} isn't connected.")
+            return None
+        if oid in self.pasting:
+            return None
+        self.pasting.add(oid)
+        n = item.get("count", 0)
+        self.toast(f"Pasting {files_preview(item)} from {peer.name}…", 4)
+        gone = [None]
+
+        def alive():                                      # a short drop-out is fine: transfers resume
+            if peer.control is not None:
+                gone[0] = None
+            elif gone[0] is None:
+                gone[0] = time.time()
+            return gone[0] is None or time.time() - gone[0] < 30
+        try:
+            os.makedirs(folder, exist_ok=True)
+            paths = self.node.fetch_files(peer, oid, folder).wait(alive=alive)
+            net.log.info("pasted %d file(s) from %s into %s", n, peer.name, folder)
+            return paths
+        except (OSError, ConnectionError) as e:
+            self.toast(f"Couldn't paste the files from {peer.name}: {e}.", 8)
+            return None
+        finally:
+            self.node.clip_wanted.pop(oid, None)
+            self.pasting.discard(oid)
+
+    def _paste_here(self, oid):
+        """Windows: an app is pasting another computer's files. Fetch them into a holding folder
+        (the app copies them on from there); the paste waits meanwhile."""
+        folder = os.path.join(net.config_dir(), "pasted", oid)
+        done = os.path.join(folder, ".complete")
+        if os.path.exists(done):                         # pasted before: they're here already
+            return [os.path.join(folder, n) for n in os.listdir(folder) if n != ".complete"]
+        self._prune_pasted()
+        paths = self._fetch(oid, folder)
+        if paths:
+            open(done, "w").close()
+        return paths
+
+    def _prune_pasted(self):
+        root = os.path.join(net.config_dir(), "pasted")
+        try:
+            for name in os.listdir(root):
+                path = os.path.join(root, name)
+                if time.time() - os.path.getmtime(path) > 6 * 3600:
+                    shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+    def _watch_mac_paste(self):
+        from PyObjCTools import AppHelper
+        import clip_mac
+
+        def on_paste(oid):                               # ⌘V in Finder: the files come into its folder
+            def work():
+                try:
+                    folder = clip_mac.finder_folder()
+                except (OSError, subprocess.SubprocessError) as e:
+                    net.log.info("paste: no Finder folder: %s", e)
+                    self.toast("Couldn't tell which Finder folder to paste into. Use Save on the Clipboard page.", 8)
+                    return
+                self._fetch(oid, folder)
+            threading.Thread(target=work, daemon=True, name="paste").start()
+
+        def apply():
+            self.paste_monitor = clip_mac.watch_paste(on_paste)
+        AppHelper.callAfter(apply)
+
+    def clip_save(self, cid):
+        """Save another computer's copied files in Downloads (where pasting isn't possible)."""
+        entry = next((e for e in self.clip_history if e["id"] == cid), None)
+        item = entry and entry["item"]
+        peer = self.node.peers.get(item.get("from")) if item else None
+        if peer is None or peer.control is None:
+            self.toast("The computer they're on isn't connected.")
+            return
+        self.node.fetch_files(peer, item["id"], None, save=True)
+        self.toast(f"Saving {files_preview(item)} in Downloads…", 4)
 
     def clip_put_text(self, text):
         self.clip_jobs.put(("put", {"kind": "text", "text": text}, False))

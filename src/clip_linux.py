@@ -1,4 +1,4 @@
-"""Linux clipboard: text and images.
+"""Linux clipboard: text, images and copied files (their paths: they're sent only when pasted).
 
 Wayland desktops that let apps watch the clipboard (KDE, Sway, Hyprland...) use wl-clipboard.
 Everything else, including GNOME on Wayland (it mirrors the clipboard to X11 apps), uses X11:
@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import threading
 import time
+import urllib.parse
 
 log = logging.getLogger("winlink")
 FILE_TYPES = ("text/uri-list", "x-special/gnome-copied-files", "application/x-kde-cutselection")
@@ -70,6 +71,18 @@ def _bmp_to_png(bmp):
         return None
 
 
+def _file_paths(raw):
+    """Local paths from a text/uri-list (or GNOME's list, which starts with "copy"/"cut")."""
+    paths = []
+    for line in raw.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if line.startswith("file://"):
+            path = urllib.parse.unquote(urllib.parse.urlparse(line).path)
+            if os.path.exists(path):
+                paths.append(path)
+    return paths
+
+
 def _run(cmd, data=None, timeout=TIMEOUT):
     """stdout of a clipboard tool, or None if it failed (nothing there, or that type isn't offered)."""
     try:
@@ -103,6 +116,11 @@ class _Base:
 
     def _item(self, types, get):
         if any(t in types for t in FILE_TYPES):        # files copied in a file manager
+            for t in FILE_TYPES[:2]:
+                if t in types:
+                    paths = _file_paths(get(t) or b"")
+                    if paths:
+                        return {"kind": "files", "paths": paths}
             return None
         if "image/png" in types:
             png = get("image/png")
@@ -178,6 +196,8 @@ class X11Clipboard(_Base):
         return self._item(set(raw.decode("utf-8", "replace").split()), self._get)
 
     def write(self, item):
+        if item["kind"] == "files":          # files from another computer: Linux can't wait for the paste
+            return self.seq()                # (WinLink's Clipboard page saves them instead)
         if item["kind"] == "text":
             _put(["xclip", "-selection", "clipboard", "-i", "-t", "UTF8_STRING"], item["text"].encode())
         else:
@@ -216,6 +236,8 @@ class WaylandClipboard(_Base):
         return self._item(set(raw.decode("utf-8", "replace").split("\n")), self._get)
 
     def write(self, item):
+        if item["kind"] == "files":          # files from another computer: Linux can't wait for the paste
+            return self.seq()                # (WinLink's Clipboard page saves them instead)
         if item["kind"] == "text":
             _put(["wl-copy", "--type", "text/plain;charset=utf-8"], item["text"].encode())
         else:

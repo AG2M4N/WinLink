@@ -59,6 +59,8 @@ MAX_FILE = 1 << 40            # 1 TB
 SPACE_MARGIN = 256 << 20      # keep this much disk free when receiving
 FILE_ATTEMPTS, RETRY_DELAYS = 5, (2, 5, 15, 30)   # failed attempts in a row (without progress) per file
 FILE_PATIENCE = 20 * 60       # keep resuming a file that's making progress for up to 20 minutes
+CLIP_OFFERS = 8               # copied files the other computers can still ask for (newest)
+CLIP_FILES_SHOWN = 20         # names listed in a "files copied" message
 PARTIAL_DIR = ".winlink-partial"   # unfinished downloads, kept so a transfer can resume
 PARTIAL_MAX_AGE = 2 * 86400
 
@@ -328,6 +330,7 @@ class Batch:
         return sum(t.done for t in (self.transfers if self.direction == "out" else self.files.values()))
 
     files = None                   # incoming: relative path -> latest Transfer for it
+    clip = None                    # outgoing: the clipboard offer being pasted (its files go to the paste)
 
 
 class Control:
@@ -378,6 +381,10 @@ class Node:
         self.guard = secure.Guard()
         self.batches = {}                      # key -> Batch (recent ones, both directions)
         self.cancelled_ids = {}                # batch id -> when (refuse late files of a cancelled batch)
+        # Copied files travel only when they're pasted: the copy sends their names (an offer), the
+        # paste asks for them ("clipwant") and they come like any other files, into the paste's folder.
+        self.clip_offers = {}                  # offer id -> {"paths", "at"} (files copied here)
+        self.clip_wanted = {}                  # offer id -> Fetch (files being pasted here)
         self.beacon_limit = secure.RateLimit(4, 8)     # announcements per second per address
         setup_logging()
         self._ts_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1187,6 +1194,16 @@ class Node:
                 elif kind == "cancel" and isinstance(msg.get("batch"), str) \
                         and re.fullmatch(r"[0-9a-f]{32}", msg["batch"]):
                     self._on_cancel_msg(peer, msg["batch"])
+                elif kind == "clipwant" and _is_id(msg.get("id")):
+                    threading.Thread(target=self._clip_want, args=(peer, msg["id"], bool(msg.get("save"))),
+                                     daemon=True, name="clip want").start()
+                elif kind == "clipfail" and _is_id(msg.get("id")):
+                    fetch = self.clip_wanted.get(msg["id"])
+                    error = str(msg.get("error") or "it couldn't send them")[:200]
+                    if fetch is not None and fetch.peer is peer:
+                        fetch.fail(error)
+                    else:                           # (a Save, not a paste)
+                        self.emit("notice", f"Couldn't get the files from {peer.name}: {error}.")
                 elif kind == "kvm":                 # keyboard and mouse sharing (kvm.py) sets itself up
                     self.emit("kvm_msg", peer, msg)
                 elif kind == "bye":
@@ -1206,6 +1223,9 @@ class Node:
         msg = {"type": "clip", "kind": item["kind"]}
         if item["kind"] == "text":
             msg["text"] = item["text"]
+        elif item["kind"] == "files":               # only the names: the files come when pasted
+            msg.update({k: item[k] for k in ("id", "count", "size")})
+            msg["names"] = item["names"][:CLIP_FILES_SHOWN]
         else:
             for key in ("png", "bmp"):
                 if item.get(key):
@@ -1221,29 +1241,50 @@ class Node:
                     pass
         threading.Thread(target=work, daemon=True).start()
 
-    # ---- files
-    def send_paths(self, peer, paths):
-        items = []
-        for path in paths:
+    def offer_files(self, paths):
+        """Files copied here: remember them under a new id. Returns the clipboard item to announce."""
+        items, complete = _walk(paths, budget=1.5)       # a huge folder: don't hold up the clipboard
+        oid = uuid.uuid4().hex
+        self.clip_offers[oid] = {"paths": list(paths), "at": time.time()}
+        while len(self.clip_offers) > CLIP_OFFERS:
+            self.clip_offers.pop(next(iter(self.clip_offers)))
+        names = [os.path.basename(os.path.abspath(p).rstrip(os.sep)) for p in paths]
+        return {"kind": "files", "id": oid, "names": names, "count": len(items) if complete else -1,
+                "size": sum(i[2] for i in items) if complete else -1, "paths": list(paths)}
+
+    def _clip_want(self, peer, oid, save=False):
+        """The other computer pasted files copied here (or pressed Save): send them now."""
+        offer = self.clip_offers.get(oid)
+        sent = offer is not None and self.send_paths(peer, offer["paths"], clip=None if save else oid)
+        if not sent:
             try:
-                path = os.path.abspath(path)
-                if os.path.isdir(path):
-                    root = os.path.dirname(path.rstrip(os.sep))
-                    for folder, _dirs, files in os.walk(path):
-                        for name in sorted(files):
-                            if name.startswith("."):
-                                continue
-                            full = os.path.join(folder, name)
-                            items.append((full, os.path.relpath(full, root), os.path.getsize(full)))
-                elif os.path.isfile(path):
-                    items.append((path, os.path.basename(path), os.path.getsize(path)))
-            except OSError as e:
-                log.info("skipping %s: %s", path, e)
+                peer.control.send({"type": "clipfail", "id": oid,
+                                   "error": "they aren't on its clipboard any more" if offer is None
+                                   else "the files were moved or deleted"})
+            except (OSError, ValueError, AttributeError):
+                pass
+
+    def fetch_files(self, peer, oid, folder, save=False):
+        """Ask for the files of an offer. They arrive in `folder` (save: in Downloads, as usual).
+        Returns a Fetch to wait on."""
+        fetch = Fetch(peer, oid, folder)
+        if not save:
+            self.clip_wanted[oid] = fetch
+        try:
+            peer.control.send({"type": "clipwant", "id": oid, "save": save})
+        except (OSError, ValueError, AttributeError):
+            fetch.fail(f"{peer.name} isn't connected")
+        return fetch
+
+    # ---- files
+    def send_paths(self, peer, paths, clip=None):
+        items, _ = _walk(paths)
         if not items:
             return 0
         tops = [os.path.basename(os.path.abspath(p).rstrip(os.sep)) for p in paths]
         name = tops[0] if len(tops) == 1 else f"{len(tops)} items"
         batch = Batch("out", uuid.uuid4().hex, name, peer, len(items), sum(i[2] for i in items))
+        batch.clip = clip
         for full, rel, size in items:
             t = Transfer("out", rel.replace(os.sep, "/"), size, peer.name, batch)
             t.full = full
@@ -1384,6 +1425,11 @@ class Node:
             batch.error = failed[0].error if failed else None
             batch.updated = time.time()
             self.emit("batch", batch)
+        if batch.clip and batch.state != "done":          # a paste is waiting for these: say they won't come
+            try:
+                peer.control.send({"type": "clipfail", "id": batch.clip, "error": batch.error or "cancelled"})
+            except (OSError, ValueError, AttributeError):
+                pass
 
     def _emit_batch(self, batch, force=False):
         now = time.time()
@@ -1414,7 +1460,7 @@ class Node:
             chan.settimeout(30)
             chan.send_json({"rel": t.name, "size": t.size, "resume": _resume_key(self.id, full, t),
                             "batch": batch.id, "batch_name": batch.name, "batch_files": batch.files_total,
-                            "batch_size": batch.size})
+                            "batch_size": batch.size, **({"clip": batch.clip} if batch.clip else {})})
             reply = chan.recv_json()
             if not reply.get("ok"):
                 raise Refused(str(reply.get("error") or "refused")[:200])
@@ -1481,8 +1527,15 @@ class Node:
         if meta.get("batch") in self.cancelled_ids:
             chan.send_json({"error": "cancelled"})
             return
+        fetch = self.clip_wanted.get(meta.get("clip")) if isinstance(meta.get("clip"), str) else None
+        if fetch is not None and fetch.peer is not peer:
+            fetch = None
+        if meta.get("clip") and fetch is None:          # nobody here is pasting that
+            chan.send_json({"error": "not wanted any more"})
+            return
+        root = fetch.folder if fetch is not None else self.downloads
         try:
-            free = shutil.disk_usage(self.downloads).free
+            free = shutil.disk_usage(root).free
         except OSError:
             free = size + SPACE_MARGIN
         if size + SPACE_MARGIN > free:
@@ -1493,11 +1546,13 @@ class Node:
         if batch.cancelled:
             chan.send_json({"error": "cancelled"})
             return
-        dest = unique_path(os.path.join(self.downloads, safe_relpath(rel)))
+        if fetch is not None:
+            fetch.batch = batch
+        dest = fetch.place(rel) if fetch is not None else unique_path(os.path.join(root, safe_relpath(rel)))
         created = []                             # folders WinLink makes (cleanup may remove them later)
         folder = os.path.dirname(dest)
         for _ in range(64):
-            if not folder.startswith(self.downloads) or folder == self.downloads or os.path.isdir(folder):
+            if not folder.startswith(root) or folder == root or os.path.isdir(folder):
                 break
             created.append(folder)
             folder = os.path.dirname(folder)
@@ -1510,7 +1565,7 @@ class Node:
         # Unfinished data is kept under a key from the sender, so a stalled transfer can resume.
         resume = meta.get("resume")
         if isinstance(resume, str) and re.fullmatch(r"[0-9a-f]{40}", resume):
-            partial_dir = os.path.join(self.downloads, PARTIAL_DIR)
+            partial_dir = os.path.join(root, PARTIAL_DIR) if fetch is None else os.path.join(self.downloads, PARTIAL_DIR)
             os.makedirs(partial_dir, exist_ok=True)
             part = os.path.join(partial_dir, hashlib.sha1((peer.id + resume).encode()).hexdigest() + ".part")
         else:
@@ -1565,7 +1620,11 @@ class Node:
                 if batch.files_done >= batch.files_total and batch.state == "active":
                     batch.state = "done"
             log.info("received %s (%d bytes) from %s via %s", os.path.basename(dest), size, peer.name, chan.route)
-            self.emit("received", dest, created, peer.name)
+            if fetch is not None:                    # pasted: it's where the user put it, not a download
+                if batch.files_done >= batch.files_total:
+                    fetch.finish()
+            else:
+                self.emit("received", dest, created, peer.name)
             if batch.cancelled:                      # cancelled just as it finished: still clean up
                 self._discard_incoming(batch)
         except (OSError, ValueError, ConnectionError) as e:
@@ -1605,6 +1664,73 @@ class Node:
                 os.rmdir(folder)
         except OSError:
             pass
+
+class Fetch:
+    """Copied files on their way here because they were pasted. wait() returns their paths
+    (the top-level files and folders, as they were copied) or raises ConnectionError."""
+
+    def __init__(self, peer, oid, folder):
+        self.peer, self.id, self.folder = peer, oid, folder
+        self.batch = None
+        self.error = None
+        self.tops = {}                   # first part of each relative path -> where it went
+        self.done = threading.Event()
+
+    def place(self, rel):
+        """Where one arriving file goes: under folder, its top-level name made unique once."""
+        rel = safe_relpath(rel)
+        top, _, rest = rel.partition(os.sep)
+        if top not in self.tops:
+            self.tops[top] = unique_path(os.path.join(self.folder, top))
+        return os.path.join(self.tops[top], rest) if rest else self.tops[top]
+
+    def finish(self):
+        self.done.set()
+
+    def fail(self, error):
+        if not self.done.is_set():
+            self.error = error
+            self.done.set()
+
+    def wait(self, timeout=None, alive=None):
+        """alive(): still worth waiting? (checked every second)"""
+        end = None if timeout is None else time.time() + timeout
+        while not self.done.wait(1):
+            if (alive is not None and not alive()) or (end is not None and time.time() > end):
+                self.fail("it took too long")
+        if self.error:
+            raise ConnectionError(self.error)
+        return list(self.tops.values())
+
+
+def _walk(paths, budget=None):
+    """(full path, relative path to send, size) for every file under paths (folders included), and
+    whether that's all of them (budget: give up after that many seconds)."""
+    end = None if budget is None else time.time() + budget
+    items = []
+    for path in paths:
+        try:
+            path = os.path.abspath(path)
+            if os.path.isdir(path):
+                root = os.path.dirname(path.rstrip(os.sep))
+                for folder, _dirs, files in os.walk(path):
+                    if end is not None and time.time() > end:
+                        return items, False
+                    for name in sorted(files):
+                        if name.startswith("."):
+                            continue
+                        full = os.path.join(folder, name)
+                        items.append((full, os.path.relpath(full, root), os.path.getsize(full)))
+            elif os.path.isfile(path):
+                items.append((path, os.path.basename(path), os.path.getsize(path)))
+        except OSError as e:
+            log.info("skipping %s: %s", path, e)
+    return items, True
+
+
+def _is_id(v):
+    return isinstance(v, str) and re.fullmatch(r"[0-9a-f]{32}", v) is not None
+
 
 # ---------------------------------------------------------------- helpers
 def _finish_file(part, dest, patience=30):
@@ -1720,6 +1846,14 @@ def clean_clip(msg):
     kind = msg.get("kind")
     if kind == "text" and isinstance(msg.get("text"), str):
         return {"kind": "text", "text": msg["text"][:4 << 20]}
+    if kind == "files" and _is_id(msg.get("id")) and isinstance(msg.get("names"), list):
+        names = [n for n in ("".join(c for c in n if c.isprintable()).strip()[:200]
+                             for n in msg["names"][:CLIP_FILES_SHOWN] if isinstance(n, str)) if n]
+        count, size = msg.get("count"), msg.get("size")
+        if names and isinstance(count, int) and isinstance(size, int):
+            return {"kind": "files", "id": msg["id"], "names": names, "count": max(count, -1),
+                    "size": min(max(size, -1), MAX_FILE)}      # -1: not counted (a huge folder)
+        return None
     if kind == "image" and all(isinstance(msg.get(k), str) for k in ("png", "bmp") if k in msg) \
             and (msg.get("png") or msg.get("bmp")):
         return {"kind": "image", **{k: msg[k] for k in ("png", "bmp") if msg.get(k)}}

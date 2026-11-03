@@ -50,6 +50,11 @@ def pair(other, port):
         if p.control: break
         time.sleep(0.05)
     return p
+lines_b = []
+_on_line_b = kb._on_line
+kb._on_line = lambda line: (lines_b.append(line), _on_line_b(line))
+if kb.engine is not None:
+    kb.engine.on_event = kb._on_line
 pB = pair(B, 51991)
 time.sleep(0.5)
 pC = pair(C, 51992)
@@ -64,7 +69,12 @@ c = ka.clients.get(pB.id, {})
 check("B answered with its fingerprint", len(c.get("fp", "")) == 64)
 check("B follows A's keyboard and mouse", kb.role == "client" and kb.server_peer is not None, kb.status)
 check("A's Deskflow server sees B connected", c.get("state") == "on", c.get("state"))
-check("Deskflow's clipboard is off", "enableClipboard=false" in open(ka.files.settings).read())
+check("Deskflow's clipboard is off", "enableClipboard=false" in open(ka.files.settings).read()
+      and open(ka.files.server_conf).read().startswith("section: options"))
+for _ in range(30):
+    if any("clipboard sharing disabled by server" in l for l in lines_b): break
+    time.sleep(0.1)
+check("B's Deskflow hears the clipboard is off", any("clipboard sharing disabled by server" in l for l in lines_b))
 check("layout: B on A's right", "right = " + c.get("screen", "?") in open(ka.files.server_conf).read())
 
 # any arrangement: C to the right of B, not touching A (Deskflow links A-B and B-C)

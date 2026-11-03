@@ -1,4 +1,9 @@
-"""Windows clipboard: text and images, via the Win32 API (no extra packages)."""
+"""Windows clipboard: text, images and copied files, via the Win32 API (no extra packages).
+
+Files from another computer travel only when they're pasted: the clipboard says "files" but the list
+is filled in later (delayed rendering). When Explorer (or any app) pastes, Windows asks this window
+for it (WM_RENDERFORMAT), the files are fetched, and the paste carries on with them.
+"""
 
 import ctypes
 import struct
@@ -7,6 +12,7 @@ from ctypes import wintypes
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 
 CF_DIB, CF_UNICODETEXT, CF_HDROP, CF_DIBV5 = 8, 13, 15, 17
 GMEM_MOVEABLE = 0x0002
@@ -29,6 +35,33 @@ user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LP
                                    wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
 user32.CreateWindowExW.restype = wintypes.HWND
 HWND_MESSAGE = wintypes.HWND(-3)
+WM_RENDERFORMAT, WM_RENDERALLFORMATS, WM_DESTROYCLIPBOARD = 0x0305, 0x0306, 0x0307
+PM_REMOVE = 1
+LRESULT = ctypes.c_ssize_t
+WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+
+
+class WNDCLASSW(ctypes.Structure):
+    _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", WNDPROC), ("cbClsExtra", ctypes.c_int),
+                ("cbWndExtra", ctypes.c_int), ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HBRUSH),
+                ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+
+user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
+user32.RegisterClassW.restype = wintypes.ATOM
+user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+user32.DefWindowProcW.restype = LRESULT
+user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT, wintypes.UINT]
+user32.PeekMessageW.restype = wintypes.BOOL
+user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+user32.DispatchMessageW.restype = LRESULT
+user32.GetClipboardOwner.restype = wintypes.HWND
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+shell32.DragQueryFileW.argtypes = [wintypes.HANDLE, wintypes.UINT, wintypes.LPWSTR, wintypes.UINT]
+shell32.DragQueryFileW.restype = wintypes.UINT
 kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
 kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
 kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
@@ -56,13 +89,52 @@ def dib_to_bmp(dib):
     return b"BM" + struct.pack("<IHHI", 14 + len(dib), 0, 0, offset) + dib
 
 
+def drop_files(paths):
+    """A CF_HDROP block: DROPFILES (20 bytes, wide names) then the paths, each ending in a NUL, then a NUL."""
+    return struct.pack("<IiiII", 20, 0, 0, 0, 1) + ("\0".join(paths) + "\0\0").encode("utf-16-le")
+
+
 class Clipboard:
     def __init__(self, _window=None):
-        # The clipboard needs an owner window, or SetClipboardData may fail: use a hidden,
-        # message-only one. Create it on the thread that uses the clipboard.
-        self.hwnd = user32.CreateWindowExW(0, "STATIC", "WinLink clipboard", 0, 0, 0, 0, 0,
+        # The clipboard needs an owner window, or SetClipboardData may fail, and delayed rendering
+        # needs one that answers messages: a hidden, message-only window of our own. Create it on the
+        # thread that uses the clipboard; pump() delivers its messages.
+        self.on_render = None            # callable(offer id) -> local paths (blocks while they come) or None
+        self.promise = None              # offer id of another computer's files on the clipboard
+        self._proc = WNDPROC(self._wndproc)       # kept: Windows calls it
+        cls = WNDCLASSW(lpfnWndProc=self._proc, hInstance=kernel32.GetModuleHandleW(None),
+                        lpszClassName="WinLinkClipboard")
+        user32.RegisterClassW(ctypes.byref(cls))
+        self.hwnd = user32.CreateWindowExW(0, "WinLinkClipboard", "WinLink clipboard", 0, 0, 0, 0, 0,
                                            HWND_MESSAGE, None, None, None)
         self.png_format = user32.RegisterClipboardFormatW("PNG")
+        self.effect_format = user32.RegisterClipboardFormatW("Preferred DropEffect")
+        self.remote_format = user32.RegisterClipboardFormatW("WinLink remote files")
+
+    def pump(self):
+        msg = wintypes.MSG()
+        while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+
+    def _wndproc(self, hwnd, msg, wparam, lparam):
+        try:
+            if msg == WM_RENDERFORMAT and wparam == CF_HDROP and self.promise and self.on_render:
+                paths = self.on_render(self.promise)          # the paste waits while they come
+                if paths:
+                    self._set(CF_HDROP, drop_files(paths))   # (the clipboard is already open for us)
+                return 0
+            if msg == WM_DESTROYCLIPBOARD:
+                self.promise = None
+                return 0
+            if msg == WM_RENDERALLFORMATS:                    # closing: files not pasted yet aren't fetched
+                return 0
+        except Exception:  # noqa: BLE001  (an exception can't cross back into Windows)
+            return 0
+        return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+    def remote_id(self):
+        return self.promise
 
     def seq(self):
         return user32.GetClipboardSequenceNumber()
@@ -98,8 +170,20 @@ class Clipboard:
         if not self._open():
             return None
         try:
-            if user32.IsClipboardFormatAvailable(CF_HDROP):   # files copied in Explorer
-                return None
+            if user32.IsClipboardFormatAvailable(CF_HDROP):   # files copied in Explorer: their paths
+                if user32.IsClipboardFormatAvailable(self.remote_format) or \
+                        user32.GetClipboardOwner() == self.hwnd:
+                    return None                                # another computer's, put here by us
+                handle = user32.GetClipboardData(CF_HDROP)
+                if not handle:
+                    return None
+                paths = []
+                for i in range(shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0)):
+                    n = shell32.DragQueryFileW(handle, i, None, 0)
+                    buf = ctypes.create_unicode_buffer(n + 1)
+                    shell32.DragQueryFileW(handle, i, buf, n + 1)
+                    paths.append(buf.value)
+                return {"kind": "files", "paths": paths} if paths else None
             if user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
                 raw = self._get(CF_UNICODETEXT)
                 if raw:
@@ -119,7 +203,16 @@ class Clipboard:
             return self.seq()
         try:
             user32.EmptyClipboard()
-            if item["kind"] == "text":
+            self.promise = None
+            if item["kind"] == "files":
+                self._set(self.effect_format, struct.pack("<I", 1))      # DROPEFFECT_COPY, never a move
+                if item.get("paths"):
+                    self._set(CF_HDROP, drop_files(item["paths"]))
+                else:                       # another computer's: the list comes when it's pasted
+                    self._set(self.remote_format, item["id"].encode("ascii"))
+                    user32.SetClipboardData(CF_HDROP, None)
+                    self.promise = item["id"]
+            elif item["kind"] == "text":
                 text = item["text"].replace("\r\n", "\n").replace("\n", "\r\n")
                 self._set(CF_UNICODETEXT, (text + "\0").encode("utf-16-le"))
             else:

@@ -1,0 +1,29 @@
+name: Tests
+
+# Desktop checks that need a system this Mac isn't: the Windows clipboard (copied files fetched only
+# when pasted) and file copy-paste between two WinLink nodes on Linux.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["src/**", "mobile/tests/harness/**", ".github/workflows/tests.yml"]
+
+jobs:
+  windows-clipboard:
+    name: Windows clipboard
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python mobile/tests/harness/win_clipboard.py
+
+  clipboard-files:
+    name: Copied files between computers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install cryptography zeroconf
+      - run: python mobile/tests/harness/desktop_clipfiles.py "$RUNNER_TEMP/clip"

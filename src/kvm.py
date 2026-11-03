@@ -204,9 +204,10 @@ class Files:
                 if re.fullmatch(r"[0-9a-f]{64}", fp or ""):
                     f.write(f"v2:sha256:{fp}\n")
 
-    def write_settings(self, name, remote_host="", screens=(), port=PORT):
+    def write_settings(self, name, remote_host="", screens=(), port=PORT, swapped=()):
         """screens: every computer in the arrangement (the server's view). Deskflow 1.27+ lists them
-        here as [computer_<name>] groups; the layout file only links them."""
+        here as [computer_<name>] groups; the layout file only links them. swapped: the screens where
+        Ctrl and Command/Windows trade places (a Mac and a PC), so Ctrl+C on one is Command+C on the other."""
         lines = [
             "[core]", f"computerName={name}", f"port={port}", "preventSleep=false", "",
             "[client]", f"remoteHost={remote_host}", "",
@@ -216,13 +217,18 @@ class Files:
             "[log]", "level=DEBUG", "toFile=false", "",          # connection news is only logged at DEBUG
         ]
         for n in screens:
-            lines += [f"[computer_{n}]", f"name={n}", ""]
+            lines += [f"[computer_{n}]", f"name={n}"]
+            if n in swapped:                     # Deskflow calls Command (and the Windows key) "super"
+                lines += ["modifierCtrl=super", "modifierSuper=ctrl"]
+            lines.append("")
         with open(self.settings, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
     def write_layout(self, positions):
         """positions: {screen name: (x, y)} on a grid; touching screens are linked both ways."""
-        out = ["section: links"]
+        # Deskflow applies the [server] settings (enableClipboard=false among them) only when the layout
+        # has an options section, even an empty one: without it, its clipboard sharing stays on.
+        out = ["section: options", "end", "", "section: links"]
         for n, near in links(positions).items():
             out.append(f"\t{n}:")
             out += [f"\t\t{side} = {other}" for side, other in near]
@@ -569,6 +575,18 @@ class Sharing:
             self.refresh()
         self.on_change()
 
+    def swaps(self, peer):
+        """Ctrl and Command trade places between this computer and peer (one's a Mac, the other isn't)?"""
+        return bool(self.conf.get("swap_keys", True)) and peer is not None and (peer.os == "mac") != IS_MAC
+
+    def set_swap_keys(self, on):
+        with self.lock:
+            self.conf["swap_keys"] = bool(on)
+            self._save()
+            if self.role == "server":
+                self._apply_server()                    # restarts Deskflow with the new keys
+        self.on_change()
+
     def refresh(self):
         """Called when devices connect or disconnect: invite computers placed next to this one."""
         with self.lock:
@@ -605,11 +623,13 @@ class Sharing:
             self.status = ("Place a computer next to this one to start." if not grid else
                            "Waiting for the other computers to answer.")
             return
-        key = tuple(sorted((n, xy) for n, xy in positions.items())) + tuple(sorted(c["fp"] for _, c in ready))
+        swapped = sorted(c["screen"] for pid, c in ready if self.swaps(self.node.peers.get(pid)))
+        key = tuple(sorted((n, xy) for n, xy in positions.items())) + tuple(sorted(c["fp"] for _, c in ready)) \
+            + ("swap",) + tuple(swapped)
         if key == self.applied and self.engine.running:
             return
         self.files.trust("clients", [c["fp"] for _, c in ready])
-        self.files.write_settings(me, screens=list(positions))
+        self.files.write_settings(me, screens=list(positions), swapped=swapped)
         self.files.write_layout(positions)
         self.applied = key
         self.role = "server"
@@ -973,6 +993,7 @@ class Sharing:
             "download": DOWNLOAD_URL,
             "share": bool(self.conf.get("share")),
             "allow": bool(self.conf.get("allow", True)),
+            "swap_keys": bool(self.conf.get("swap_keys", True)),
             "role": self.role,
             "me": {"name": self.node.name, "os": "mac" if IS_MAC else "windows" if IS_WIN else "linux"},
             "following": self.server_peer.name if self.role == "client" and self.server_peer else None,
