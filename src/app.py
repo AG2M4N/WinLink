@@ -370,6 +370,9 @@ class Api(metaclass=_SafeMethods):
     def kvm_swap_keys(self, on):
         self._app.kvm.set_swap_keys(bool(on))
 
+    def kvm_elevated(self, on):
+        self._app.kvm.set_elevated(bool(on))
+
     def kvm_get(self):
         webbrowser.open(kvm.DOWNLOAD_URL)
         self._app.toast("Install Deskflow, then come back: WinLink finds it by itself.", 8)

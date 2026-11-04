@@ -50,6 +50,9 @@ def capture_test(seconds=4.0):
 
 def main():
     args = sys.argv[1:]
+    if len(args) == 3 and args[0] == "--kvm-helper" and net.IS_WIN:     # see kvm_elevated.py
+        import kvm_elevated
+        return kvm_elevated.helper_main(args[1], args[2])
     pending = None
     if "--capture-test" in args:
         return capture_test()

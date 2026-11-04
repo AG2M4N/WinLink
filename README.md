@@ -224,6 +224,11 @@ isn't touched.
   allow WinLink (and its `linkts` helper) through the firewall when asked, or let UDP port 41642 in;
   on the same Wi-Fi, check the router doesn't isolate devices from each other.
 
+**Windows: Task Manager and other admin windows.** Windows doesn't let normal programs control windows
+that run as administrator, so the pointer stops while one is in front. *Work over admin windows* (keyboard
+and mouse settings) runs Deskflow with administrator rights: Windows asks once each time WinLink starts it,
+and nothing stays installed. The sign-in and UAC screens remain out of reach (they need a system service).
+
 ### Phone as a trackpad
 On the phone, *Devices → Trackpad* next to a connected computer turns the screen into a touchpad for it:
 move with one finger, tap to click, tap with two fingers to right-click, scroll with two fingers, and

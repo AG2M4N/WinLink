@@ -293,13 +293,67 @@ class Engine:
         self.proc = None
         self.mode = None
         self.lock = threading.Lock()
+        self.elevated = False          # Windows: run it with administrator rights (kvm_elevated.py)
+        self.link = None
+        self.problem = ""              # why administrator rights aren't in use, if they were wanted
 
     @property
     def running(self):
+        if self.link is not None and self.link.up and self.link.running:
+            return True
         return self.proc is not None and self.proc.poll() is None
+
+    def set_elevated(self, on):
+        """Turn administrator rights on or off; takes effect at the next start."""
+        self.elevated = bool(on) and IS_WIN
+        if not self.elevated and self.link is not None:
+            self.link.close()
+            self.link = None
+        self.problem = ""
+        if self.elevated:              # ask now (Windows' prompt), so a start later needn't wait for it
+            import kvm_elevated
+            if self.link is None:
+                self.link = kvm_elevated.Link(self.on_event)
+
+            def ask(link=self.link):
+                try:
+                    link.open()
+                except kvm_elevated.Declined as e:     # said No: don't ask again until switched on again
+                    self.elevated = False
+                    self.problem = f"Not over admin windows: {e}."
+                    log.info("keyboard and mouse: %s", e)
+                except OSError as e:   # the next start says why and carries on normally
+                    log.info("keyboard and mouse: administrator rights: %s", e)
+            t = threading.Thread(target=ask, daemon=True, name="kvm elevate")
+            t.start()
+            return t
+        return None
+
+    def _start_elevated(self, mode):
+        """True if it started with administrator rights; False to start it normally instead."""
+        import kvm_elevated
+        if self.link is None:
+            self.link = kvm_elevated.Link(self.on_event)
+        try:
+            self.link.start(mode)
+        except kvm_elevated.Declined as e:
+            self.problem = f"Not over admin windows: {e}."
+            self.elevated = False              # don't ask again until it's switched on again
+            log.info("keyboard and mouse: %s", e)
+            return False
+        except OSError as e:
+            self.problem = f"Couldn't get administrator rights: {e}."
+            log.warning("keyboard and mouse: administrator rights: %s", e)
+            return False
+        self.mode = mode
+        self.problem = ""
+        log.info("keyboard and mouse: deskflow-core %s started (as administrator)", mode)
+        return True
 
     def start(self, mode):
         self.stop()
+        if self.elevated and self._start_elevated(mode):
+            return
         with self.lock:
             self.mode = mode
             flags = 0x08000000 if IS_WIN else 0                 # no console window
@@ -325,6 +379,8 @@ class Engine:
             self.on_event(f"__exit__ {code}")
 
     def stop(self):
+        if self.link is not None:
+            self.link.stop()
         with self.lock:
             proc, self.proc = self.proc, None
         if proc is not None and proc.poll() is None:
@@ -569,6 +625,8 @@ class Sharing:
                 core = None
         self.core = core
         self.engine = Engine(core, self.files, self._on_line) if core else None
+        if self.engine is not None and self.conf.get("elevated") and IS_WIN:
+            self.engine.elevated = True        # asked for (Windows' prompt) the first time it starts
 
     def recheck(self):
         """Deskflow installed or updated since? (the Get Deskflow button, or a new launch)."""
@@ -623,6 +681,23 @@ class Sharing:
     def swaps(self, peer):
         """Ctrl and Command trade places between this computer and peer (one's a Mac, the other isn't)?"""
         return bool(self.conf.get("swap_keys", True)) and peer is not None and (peer.os == "mac") != IS_MAC
+
+    def set_elevated(self, on):
+        """Windows: run Deskflow with administrator rights (works over Task Manager and other admin
+        windows). Asks with Windows' prompt now, then restarts Deskflow with them."""
+        with self.lock:
+            self.conf["elevated"] = bool(on) and IS_WIN
+            self._save()
+            asking = self.engine.set_elevated(self.conf["elevated"]) if self.engine is not None else None
+        self.on_change()
+
+        def then():                    # once the prompt's answered (not holding the lock meanwhile)
+            if asking is not None:
+                asking.join()
+            self._restart()
+            self.on_change()
+        if self.engine is not None:
+            threading.Thread(target=then, daemon=True, name="kvm elevate restart").start()
 
     def set_swap_keys(self, on):
         with self.lock:
@@ -1024,6 +1099,8 @@ class Sharing:
     def stop_all(self):
         if self.engine is not None:
             self.engine.stop()
+            if self.engine.link is not None:           # the elevated helper stops Deskflow and exits
+                self.engine.link.close()
         self._expose(False)
         self._close_relay()
 
@@ -1075,6 +1152,9 @@ class Sharing:
             "share": bool(self.conf.get("share")),
             "allow": bool(self.conf.get("allow", True)),
             "swap_keys": bool(self.conf.get("swap_keys", True)),
+            "can_elevate": IS_WIN and self.engine is not None,
+            "elevated": bool(self.conf.get("elevated")) and IS_WIN,
+            "elevated_problem": self.engine.problem if self.engine is not None else "",
             "role": self.role,
             "me": {"name": self.node.name, "os": "mac" if IS_MAC else "windows" if IS_WIN else "linux"},
             "following": self.server_peer.name if self.role == "client" and self.server_peer else None,

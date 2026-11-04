@@ -518,6 +518,9 @@ function renderKvm(s) {
     }
     h += `<div class="row"><div class="grow"><div class="name">Let other computers control this one</div>
       <div class="sub">When a paired computer shares its keyboard and mouse and places this one next to it.</div></div>${sw("kvm_allow", k.allow)}</div>`;
+    if (k.can_elevate) h += `<div class="row"><div class="grow"><div class="name">Work over admin windows</div>
+      <div class="sub">Keeps the keyboard and mouse working while Task Manager or another administrator window is in front. Windows asks for permission each time WinLink starts it. (The sign-in and UAC screens stay off-limits.)</div>
+      ${k.elevated_problem ? `<div class="sub" style="color:var(--bad)">${esc(k.elevated_problem)}</div>` : ""}</div>${sw("kvm_elevated", k.elevated)}</div>`;
   }
   paint("kvm", h);
   placeTiles();
