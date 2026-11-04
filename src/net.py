@@ -51,7 +51,8 @@ MAX_LINE = 160 << 20          # clipboard images travel as one base64 line
 SEEN_TIMEOUT = 8              # seconds without a beacon before a device counts as gone
 TS_SEEN_TIMEOUT = 35          # same for devices found through Tailscale (checked every 10 s)
 TS_POLL = 10
-PROTO = 2                     # connection protocol version (2 = authenticated + encrypted)
+PROTO = 2                     # connection protocol version (2 = authenticated + encrypted;
+                              # "plain" in the hello = skip the encryption inside the built-in Tailscale)
 HANDSHAKE_TIMEOUT = 8         # seconds a new connection gets to introduce itself
 PROMPT_WAIT = 90              # seconds a "wants to connect" question stays up
 MAX_STRANGERS = 24            # unpaired devices shown at once (stops junk filling the list)
@@ -695,6 +696,12 @@ class Node:
             return info
         return None
 
+    def in_tunnel(self, sock):
+        """This connection runs through the built-in Tailscale (inside WireGuard all the way to the
+        other device), so WinLink's own encryption would only repeat it. Not true for a 100.x
+        address alone: that could be an ordinary network using the same addresses."""
+        return sock in self.ts_socks
+
     def route_of(self, sock):
         if isinstance(sock, secure.Channel):
             return sock.route
@@ -862,6 +869,10 @@ class Node:
                  "port": PORT, "nonce": secure.b64(nc), "manual": bool(manual)}
         if key is None:
             hello["pair"] = True
+        offer_plain = key is not None and self.in_tunnel(sock)
+        if offer_plain:
+            hello["plain"] = True                  # skip our encryption if they're in the tunnel too
+        plain = False
         secure.send_json(sock, hello)
         try:
             reply = secure.recv_json(sock)
@@ -881,6 +892,7 @@ class Node:
             theirs = secure.unb64(str(ok.get("proof", "")), 32) if ok.get("ok") else b""
             if not hmac.compare_digest(theirs, secure.proof(key, b"server", nc, ns, kind)):
                 raise secure.AuthError(f"{peer.name} couldn't prove it's the device you paired")
+            plain = offer_plain and ok.get("plain") is True
         else:
             if not allow_pair or kind != "control":
                 raise secure.AuthError("not paired")
@@ -898,7 +910,7 @@ class Node:
                 raise Declined()
             self.save_key(peer, key)
         c2s, s2c = secure.session_keys(key, nc, ns)
-        return secure.Channel(sock, c2s, s2c, route)
+        return secure.Channel(sock, c2s, s2c, route, plain=plain)
 
     def connect(self, peer, manual=False, force=False):
         """Open the control connection (pairs first if needed)."""
@@ -1101,9 +1113,12 @@ class Node:
                 log.warning("%s at %s failed to prove it's paired%s", peer.name, ip,
                             "; ignoring that address for a minute" if blocked else "")
                 return None
-            secure.send_json(sock, {"ok": True, "proof": secure.b64(secure.proof(key, b"server", nc, ns, kind))})
+            # Both ends inside the built-in Tailscale's tunnel: no second layer of encryption
+            plain = hello["plain"] and self.in_tunnel(sock)
+            secure.send_json(sock, {"ok": True, "proof": secure.b64(secure.proof(key, b"server", nc, ns, kind)),
+                                    **({"plain": True} if plain else {})})
             c2s, s2c = secure.session_keys(key, nc, ns)
-            chan = secure.Channel(sock, s2c, c2s, self.route_of(sock))
+            chan = secure.Channel(sock, s2c, c2s, self.route_of(sock), plain=plain)
             if kind == "control" and peer.paused:     # they asked to reconnect after we disconnected
                 if not self._ask(peer, ""):
                     return None
@@ -1828,7 +1843,7 @@ def clean_hello(h):
     return {"type": h["type"], "id": h["id"], "name": clean_name(h.get("name")),
             "os": h.get("os") if h.get("os") in OS_NAMES else "?",
             "port": port, "nonce": secure.unb64(str(h.get("nonce", "")), 16),
-            "pair": bool(h.get("pair")), "manual": bool(h.get("manual"))}
+            "pair": bool(h.get("pair")), "manual": bool(h.get("manual")), "plain": h.get("plain") is True}
 
 
 def clean_beacon(info):

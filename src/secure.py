@@ -9,6 +9,12 @@ Every later connection: both sides prove they have that key (HMAC over fresh
 random nonces, so a recording can't be replayed), then everything is encrypted
 with ChaCha20-Poly1305 using keys derived for that connection only.
 
+Except over WinLink's built-in Tailscale: there both ends' connection runs inside
+Tailscale's WireGuard tunnel (encrypted and authenticated end to end), so when both
+sides see that for themselves they still do the proof above, then skip their own
+encryption ("plain" in the handshake). Only the built-in Tailscale counts: a 100.x
+address alone could be an ordinary network that happens to use those addresses.
+
 Guard: limits on connections, attempts and prompts per address, so a flood of
 connections or junk can't take WinLink down.
 """
@@ -109,11 +115,14 @@ def recv_json(sock, limit=MAX_HANDSHAKE_LINE):
 # ---------------------------------------------------------------- encrypted channel
 class Channel:
     """An authenticated, encrypted connection. Looks enough like a socket + file for the rest of
-    WinLink: sendall, read1, read, readline, settimeout, shutdown, close, getpeername."""
+    WinLink: sendall, read1, read, readline, settimeout, shutdown, close, getpeername.
+    plain: already inside the built-in Tailscale's WireGuard tunnel, so frames go unencrypted
+    (same framing, so empty keep-alive frames still work)."""
 
-    def __init__(self, sock, send_key, recv_key, route):
+    def __init__(self, sock, send_key, recv_key, route, plain=False):
         self.sock = sock
         self.route = route
+        self.plain = plain
         self._tx, self._rx = ChaCha20Poly1305(send_key), ChaCha20Poly1305(recv_key)
         self._tx_n = self._rx_n = 0
         self._buf = bytearray()
@@ -128,7 +137,7 @@ class Channel:
                 chunk = bytes(data[i:i + FRAME])
                 if not chunk and i:
                     break
-                ct = self._tx.encrypt(struct.pack(">4xQ", self._tx_n), chunk, None)
+                ct = chunk if self.plain else self._tx.encrypt(struct.pack(">4xQ", self._tx_n), chunk, None)
                 self._tx_n += 1
                 self.sock.sendall(struct.pack(">I", len(ct)) + ct)
 
@@ -150,11 +159,16 @@ class Channel:
             self._eof = True
             return False
         (size,) = struct.unpack(">I", head)
-        if size < 16 or size > FRAME + 16:
+        tag = 0 if self.plain else 16
+        if size < tag or size > FRAME + tag:
             raise ConnectionError("bad frame")
-        ct = self._recv_exact(size)
+        ct = self._recv_exact(size) if size else b""
         if ct is None:
             raise ConnectionError("connection closed mid-frame")
+        if self.plain:
+            self._buf += ct
+            self._rx_n += 1
+            return True
         try:
             self._buf += self._rx.decrypt(struct.pack(">4xQ", self._rx_n), ct, None)
         except Exception as e:  # noqa: BLE001  (tampered or out-of-order data)
