@@ -432,7 +432,7 @@ function DeviceRow({ c, st, d }: { c: Colors; st: PageProps["st"]; d: DeviceView
         {d.state === "connecting" ? <ActivityIndicator color={c.accent} /> : null}
       </View>
       <View style={[st.row, { marginTop: 10, gap: 8 }]}>
-        {d.state === "on" && ["mac", "windows", "linux"].includes(d.os) ? (
+        {d.state === "on" && !["android", "ios"].includes(d.os) ? (
           <Button st={st} title="Trackpad" kind="primary" onPress={() => controller.openTrackpad(d.id)} />
         ) : null}
         {d.state === "on" ? <Button st={st} title="Disconnect" kind="quiet" onPress={() => controller.disconnect(d.id)} /> : null}

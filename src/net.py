@@ -258,6 +258,7 @@ class Peer:
         self.control = None        # live Control connection
         self.incoming = None       # pending pairing request from them: {"code", "event", "allow"}
         self.waiting_code = None   # we asked them; waiting for their approval
+        self.last_answer = None    # the person's answer to their last question: True / False / None (no answer)
         self.paused = False        # we pressed Disconnect: ask before reconnecting
         self.remote_paused = False # they pressed Disconnect: don't auto-dial them
         self.connecting = False
@@ -742,8 +743,12 @@ class Node:
                       and self.is_trusted(p.id) and now >= p.retry_at
                       and p.incoming is None and (self.id < p.id or now - p.idle_since > 6)):
                     self.connect(p)
+                # A stranger gone quiet leaves the list, but never in the middle of pairing: that
+                # removed the device (and its code) while it waited, and the pairing then finished on
+                # an entry that wasn't in the list any more, so it looked like it failed.
                 if not p.nearby and not self.is_trusted(p.id) and p.control is None \
-                        and p.incoming is None and now - p.last_seen > 30:
+                        and p.incoming is None and p.waiting_code is None and not p.connecting \
+                        and now - p.last_seen > 30:
                     with self.lock:
                         self.peers.pop(p.id, None)
                     changed = True
@@ -976,6 +981,7 @@ class Node:
         req = peer.incoming
         if req is not None:
             req["allow"] = allow
+            req["answered"] = True
             req["event"].set()
 
     def disconnect(self, peer):
@@ -1133,6 +1139,7 @@ class Node:
             secure.send_json(sock, {"mode": "denied", "reason": "busy"})
             return None
         allow = False
+        declined = False
         key_before = key
         try:
             pairing = secure.Pairing()
@@ -1140,6 +1147,7 @@ class Node:
             msg = secure.recv_json(sock)
             key, code = pairing.finish(secure.unb64(str(msg.get("pub", "")), 32), peer.id, self.id, nc, ns)
             allow = self._ask(peer, code, repair=key_before is not None)
+            declined = not allow and peer.last_answer is False   # pressed Decline (not just unanswered)
             if not allow:
                 secure.send_json(sock, {"type": "denied"})
                 return None
@@ -1147,7 +1155,9 @@ class Node:
             peer.paused = peer.remote_paused = False
             secure.send_json(sock, {"type": "welcome"})
         finally:
-            self.guard.end_prompt(peer.id, declined=not allow)
+            # Only a real Decline makes it wait a minute to ask again; a question nobody saw doesn't
+            # (that refused the next Pair at once, so pairing seemed to fail for no reason).
+            self.guard.end_prompt(peer.id, declined=declined)
         c2s, s2c = secure.session_keys(key, nc, ns)
         return secure.Channel(sock, s2c, c2s, self.route_of(sock))
 
@@ -1155,13 +1165,17 @@ class Node:
         """Show "wants to connect" and wait for the user (up to PROMPT_WAIT seconds).
         repair: it was paired before but couldn't prove it (reinstalled, or an impostor)."""
         req = {"code": code, "event": threading.Event(), "allow": False, "repair": repair}
-        peer.incoming = req
+        with self.lock:
+            if self.peers.get(peer.id) is not peer:   # tidied away a moment ago: put it back, or the
+                self.peers[peer.id] = peer            # question would never show
+            peer.incoming = req
         self.emit("peers")
         try:
             req["event"].wait(PROMPT_WAIT)
         finally:
             peer.incoming = None
             self.emit("peers")
+        peer.last_answer = req["allow"] if req.get("answered") else None    # None: nobody answered
         return req["allow"]
 
     def _peer_for(self, hello, addr):
@@ -1173,6 +1187,7 @@ class Node:
                 name = hello["name"] or self.settings["trusted"].get(hello["id"], addr[0])
                 peer = self.peers[hello["id"]] = Peer(hello["id"], name, hello["os"], hello["port"])
             peer.name = hello["name"] or peer.name
+            peer.last_seen = time.time()           # it just called us: don't tidy it away right now
             host = addr[0].removeprefix("::ffff:")
             peer.addrs.setdefault(host, 0.0)
             _trim_addrs(peer)
@@ -1182,6 +1197,9 @@ class Node:
         return sum(1 for p in self.peers.values() if not self.is_trusted(p.id))
 
     def _run_control(self, peer, chan):
+        with self.lock:                            # connected to an entry no longer in the list: put it back
+            if self.peers.get(peer.id) is not peer:
+                self.peers[peer.id] = peer
         chan.settimeout(15)
         ctrl = Control(chan, chan.route)
         old, peer.control = peer.control, ctrl

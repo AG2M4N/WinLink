@@ -333,6 +333,7 @@ export class Node {
       peer.retryAt = 0;
     }
     peer.name = cleanName(info.name) || peer.name;
+    if (OS_NAMES.includes(info.os as any)) peer.os = info.os;      // learnt later than the device itself
     peer.port = info.port || PORT;
     const now = Date.now();
     for (const a of addrs) peer.addrs.set(a, now);
@@ -344,7 +345,8 @@ export class Node {
     const peer = this.peers.get(id);
     if (!peer) return;
     for (const a of peer.addrs.keys()) peer.addrs.set(a, 0);
-    if (!this.isTrusted(id) && !peer.control) this.peers.delete(id);
+    // not in the middle of pairing: that removed the computer (and its code) while it waited
+    if (!this.isTrusted(id) && !peer.control && !peer.connecting && !peer.waitingCode) this.peers.delete(id);
     this.emit({ kind: "peers" });
   }
 
@@ -697,6 +699,7 @@ export class Node {
         this.peers.set(h.id, peer);
       }
       peer.name = h.name || peer.name;
+      if (OS_NAMES.includes(h.os as any)) peer.os = h.os;
       peer.port = h.port;
       if (conn.addr && !peer.addrs.has(conn.addr)) peer.addrs.set(conn.addr, 0);
       const key = this.keyFor(peer.id);
