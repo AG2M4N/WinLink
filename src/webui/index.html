@@ -97,12 +97,38 @@ h2 { margin: 24px 2px 8px; font-size: 11px; font-weight: 600; letter-spacing: .0
 h2 .spacer { flex: 1; }
 h2 button { text-transform: none; letter-spacing: 0; font-size: 12px; }
 
+/* ---- any window size: medium -> an icon sidebar; small -> the pages along the bottom */
+.row { flex-wrap: wrap; }
+.row > .grow { min-width: 180px; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 64px 1fr; }
+  aside { padding: 14px 8px 12px; }
+  .brand b, .nav .lbl, .side-foot .me { display: none; }
+  .brand { padding: 0 0 14px; justify-content: center; }
+  .nav { justify-content: center; padding: 0; position: relative; }
+  .nav .count { position: absolute; top: 2px; right: 4px; margin: 0; }
+  .side-foot { padding: 10px 0 0; } .status { justify-content: center; } .status span:not(.dot) { display: none; }
+  .page { padding: 20px 16px 40px; }
+}
+@media (max-width: 480px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  aside { order: 2; flex-direction: row; padding: 6px; border-right: 0; border-top: 1px solid var(--line); }
+  .brand, .side-foot { display: none; }
+  nav { flex-direction: row; justify-content: space-around; width: 100%; }
+  .nav { flex: 1; height: 42px; }
+  main { order: 1; }
+  .page { padding: 16px 12px 32px; }
+  h1 { font-size: 19px; }
+  .head { flex-wrap: wrap; align-items: flex-start; }
+  .row > .grow { min-width: 0; }
+}
+
 /* ---- cards and rows */
 .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 58px; }
 .row + .row, .sep { border-top: 1px solid var(--line); }
 .grow { flex: 1; min-width: 0; }
-.name { font-size: 13.5px; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.name { font-size: 13.5px; font-weight: 560; overflow-wrap: anywhere; }
 .sub { color: var(--text-2); font-size: 12px; margin-top: 1px; }
 .facts .row { min-height: 0; padding: 10px 14px; align-items: baseline; }
 .facts .k { width: 108px; flex: none; color: var(--text-2); font-size: 12.5px; }
@@ -415,7 +441,7 @@ let badges = {};
 function paintNav() {
   paint("nav", PAGES.map(([id, label]) => {
     const b = badges[id];
-    return `<button class="nav ${id === page ? "on" : ""}" data-go="${id}">${I[id]}${label}${b ? `<span class="count ${b === true ? "dot" : ""}">${b === true ? "" : b}</span>` : ""}</button>`;
+    return `<button class="nav ${id === page ? "on" : ""}" data-go="${id}" title="${label}">${I[id]}<span class="lbl">${label}</span>${b ? `<span class="count ${b === true ? "dot" : ""}">${b === true ? "" : b}</span>` : ""}</button>`;
   }).join(""));
 }
 
@@ -504,21 +530,28 @@ function arrangeBox() {
   const cells = [...box.querySelectorAll(".tile[data-x]")].map((t) => [+t.dataset.x, +t.dataset.y]);
   const xs = cells.map((c) => c[0]), ys = cells.map((c) => c[1]);
   const minX = Math.min(...xs) - 1, maxX = Math.max(...xs) + 1, minY = Math.min(...ys) - 1, maxY = Math.max(...ys) + 1;
-  const height = (maxY - minY + 1) * CELL_H + 16;
-  box.style.height = height + "px";
-  const ox = (box.clientWidth - (maxX - minX + 1) * CELL_W) / 2 + (CELL_W - TILE_W) / 2 - minX * CELL_W;
-  const oy = 8 + (CELL_H - TILE_H) / 2 - minY * CELL_H;
-  return {box, ox, oy, minX, maxX, minY, maxY};
+  // Shrink the whole arrangement to the window's width (never grow it): a narrow window cut screens off.
+  const k = Math.max(0.45, Math.min(1, (box.clientWidth - 12) / ((maxX - minX + 1) * CELL_W)));
+  const cw = CELL_W * k, ch = CELL_H * k;
+  box.style.height = (maxY - minY + 1) * ch + 16 + "px";
+  const ox = (box.clientWidth - (maxX - minX + 1) * cw) / 2 + (cw - TILE_W * k) / 2 - minX * cw;
+  const oy = 8 + (ch - TILE_H * k) / 2 - minY * ch;
+  return {box, ox, oy, k, cw, ch, minX, maxX, minY, maxY};
+}
+/** Where grid spot (x, y) goes in the arrangement, and at what size. */
+function putAt(el, g, x, y) {
+  el.style.left = g.ox + x * g.cw + "px";
+  el.style.top = g.oy + y * g.ch + "px";
+  el.style.transform = g.k < 1 ? `scale(${g.k})` : "";
+  el.style.transformOrigin = "top left";
 }
 function placeTiles() {
   const g = arrangeBox();
   if (!g) return;
-  g.box.querySelectorAll(".tile[data-x]").forEach((t) => {
-    t.style.left = g.ox + +t.dataset.x * CELL_W + "px";
-    t.style.top = g.oy + +t.dataset.y * CELL_H + "px";
-  });
+  g.box.querySelectorAll(".tile[data-x]").forEach((t) => putAt(t, g, +t.dataset.x, +t.dataset.y));
 }
 window.addEventListener("resize", placeTiles);
+if (window.ResizeObserver) new ResizeObserver(() => placeTiles()).observe(document.body);
 
 // Free spots next to the screens already placed (not counting the one being moved).
 function freeSpots(except) {
@@ -541,7 +574,7 @@ document.addEventListener("pointerdown", (e) => {
   const r = t.getBoundingClientRect();
   const ghost = t.cloneNode(true);
   ghost.classList.add("ghost");
-  Object.assign(ghost.style, {left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px"});
+  Object.assign(ghost.style, {left: r.left + "px", top: r.top + "px", transform: t.style.transform, transformOrigin: "top left"});
   document.body.appendChild(ghost);
   t.classList.add("lifted");
   kvmDrag = {id: t.dataset.kvm, tile: t, ghost, dx: e.clientX - r.left, dy: e.clientY - r.top, spot: null};
@@ -551,7 +584,7 @@ document.addEventListener("pointerdown", (e) => {
     const slot = document.createElement("div");
     slot.className = "slot";
     slot.dataset.x = x; slot.dataset.y = y;
-    Object.assign(slot.style, {left: g.ox + x * CELL_W + "px", top: g.oy + y * CELL_H + "px"});
+    putAt(slot, g, x, y);
     g.box.appendChild(slot);
   }
 });
@@ -560,14 +593,15 @@ document.addEventListener("pointermove", (e) => {
   kvmDrag.ghost.style.left = e.clientX - kvmDrag.dx + "px";
   kvmDrag.ghost.style.top = e.clientY - kvmDrag.dy + "px";
   // the nearest free spot under the tile's centre
-  const cx = e.clientX - kvmDrag.dx + TILE_W / 2, cy = e.clientY - kvmDrag.dy + TILE_H / 2;
+  const gr = kvmDrag.ghost.getBoundingClientRect();
+  const cx = e.clientX - kvmDrag.dx + gr.width / 2, cy = e.clientY - kvmDrag.dy + gr.height / 2;
   let best = null, bestD = 1e9;
   document.querySelectorAll("#arrange .slot").forEach((sl) => {
     const r = sl.getBoundingClientRect(), d = Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy);
     sl.classList.remove("hot");
     if (d < bestD) { bestD = d; best = sl; }
   });
-  kvmDrag.spot = best && bestD < CELL_W * 0.6 ? best : null;
+  kvmDrag.spot = best && bestD < gr.width * 0.7 ? best : null;
   if (kvmDrag.spot) kvmDrag.spot.classList.add("hot");
 });
 function endDrag(e) {

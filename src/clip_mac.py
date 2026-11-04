@@ -10,6 +10,7 @@ import subprocess
 from AppKit import (
     NSBitmapImageRep,
     NSEvent,
+    NSImage,
     NSPasteboard,
     NSPasteboardTypePNG,
     NSPasteboardTypeString,
@@ -19,7 +20,7 @@ from AppKit import (
     NSWorkspace,
 )
 
-PNG, BMP = 4, 1          # NSBitmapImageFileType values
+PNG = 4                  # NSBitmapImageFileType value
 FILE_URL = "public.file-url"
 REMOTE = "com.winlink.remote-files"     # files copied on another computer: holds their offer id
 KEY_DOWN = 1 << 10                      # NSEventMaskKeyDown
@@ -46,13 +47,22 @@ class Clipboard:
         text = self.pb.stringForType_(NSPasteboardTypeString)
         if text:
             return {"kind": "text", "text": str(text)}
-        data = self.pb.dataForType_(NSPasteboardTypePNG) or self.pb.dataForType_(NSPasteboardTypeTIFF)
+        # A photo copied on an iPhone (Universal Clipboard) is usually JPEG or HEIC, not PNG or TIFF
+        data = None
+        for t in (NSPasteboardTypePNG, NSPasteboardTypeTIFF, "public.jpeg", "public.heic", "public.heif"):
+            if t in types:
+                data = self.pb.dataForType_(t)
+                if data:
+                    break
+        if not data:                   # any other image type macOS can read
+            img = NSImage.alloc().initWithPasteboard_(self.pb) if NSImage.canInitWithPasteboard_(self.pb) else None
+            data = img.TIFFRepresentation() if img is not None else None
         if data:
             rep = NSBitmapImageRep.imageRepWithData_(data)
             if rep is not None:
-                return {"kind": "image",
-                        "png": bytes(rep.representationUsingType_properties_(PNG, {})),
-                        "bmp": bytes(rep.representationUsingType_properties_(BMP, {}))}
+                # PNG only: the other computers make a bitmap themselves if they need one, and a photo's
+                # BMP is huge (about 48 MB for an iPhone's 12 megapixels).
+                return {"kind": "image", "png": bytes(rep.representationUsingType_properties_(PNG, {}))}
         return None
 
     def remote_id(self):
