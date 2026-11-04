@@ -53,6 +53,7 @@ overrides:
       - python3-pil
       - python3-cffi
       - libportaudio2
+      - libopus0
       - pulseaudio-utils
       - xdg-utils
       - libxfixes3
@@ -74,6 +75,7 @@ overrides:
       - python3-pillow
       - python3-cffi
       - portaudio
+      - opus
       - pulseaudio-utils
       - xdg-utils
       - libXfixes

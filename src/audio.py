@@ -4,13 +4,16 @@ Sound from any device to any device.
 A device that shares its sound captures everything it plays (Windows: WASAPI
 loopback; Mac: ScreenCaptureKit; Android: the phone app) and streams it to one
 other device, which plays it through its speakers. On the same Wi-Fi it's
-lossless 32-bit float; over Tailscale it's CD-quality 16-bit with a bigger
-buffer, so it holds up on slower links.
+lossless 32-bit float; over Tailscale it's Opus (about 100 kbps, see opus.py)
+with a bigger buffer, so it holds up on slow and relayed links. A receiver
+without Opus (older versions, the phone app) gets CD-quality 16-bit PCM instead.
 
 The stream is an encrypted "audio" connection:
-  sender   -> {"rate", "channels", "format", "remote", "buffer_ms", "from"}
-  receiver -> {"ok": true}  or  {"ok": false, "error": "why"}
-  sender   -> raw PCM, until either side closes
+  sender   -> {"rate", "channels", "format", "remote", "buffer_ms", "from", "opus"?}
+              ("opus": true offers Opus; "format" is what's sent if the receiver doesn't take it)
+  receiver -> {"ok": true, "format": "opus"?}  or  {"ok": false, "error": "why"}
+              (older receivers ignore the offer and answer {"ok": true}: PCM it is)
+  sender   -> raw PCM, or Opus packets (opus.py) if agreed, until either side closes
   receiver -> {"type": "stop", "reason": "why"} when it stops playing for a reason the sender should
               know (someone else started playing here, or the person pressed Stop); the sender
               then stops sharing instead of reconnecting.
@@ -19,6 +22,8 @@ The stream is an encrypted "audio" connection:
 import queue
 import threading
 import time
+
+import opus
 
 FRAME = 8            # bytes per buffered frame: stereo float32
 TARGET_MS = 40       # where Auto starts on the same Wi-Fi (it adapts: see Player)
@@ -63,6 +68,8 @@ def convert(pcm, channels, q, np):
         samples = (samples[0:n:2] + samples[1:n:2]) / 2        # average pairs: gentle low-pass
     if q["format"] == "s16":
         return (np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes()
+    if q["format"] == "opus":                     # float32 for the encoder (it clips by itself)
+        return np.ascontiguousarray(samples, dtype="<f4").tobytes()
     return samples.astype("<f4").tobytes()
 
 
@@ -216,6 +223,12 @@ class Player:
         np = self.np
         rate, ch = int(hdr["rate"]), int(hdr["channels"])
         dtype, size = ("<f4", 4) if hdr.get("format") == "f32" else ("<i2", 2)
+        decoder = None
+        if hdr.get("opus"):                          # offered: take it if this computer has Opus
+            try:
+                decoder = opus.Decoder(rate, ch, np)
+            except OSError:
+                decoder = None
         frame = ch * size
         remote = bool(hdr.get("remote"))
         target = self.latency_ms or int(hdr.get("buffer_ms", REMOTE_MS if remote else TARGET_MS))
@@ -249,10 +262,11 @@ class Player:
             else:
                 _tell_stop(old, f"{peer_name} started playing there")
         try:
-            sock.send_json({"ok": True})
+            sock.send_json({"ok": True, **({"format": "opus"} if decoder is not None else {})})
         except (OSError, ValueError):
             pass
-        on_state({"rate": rate, "bits": "32-bit float" if size == 4 else "16-bit",
+        bits = "Opus" if decoder is not None else "32-bit float" if size == 4 else "16-bit"
+        on_state({"rate": rate, "bits": bits,
                   "remote": bool(hdr.get("remote")), "channels": ch, "buffer_ms": self.target_ms})
         rest = b""
         try:
@@ -260,14 +274,19 @@ class Player:
                 data = sock.read1(16384)
                 if not data:
                     break
-                data = rest + data
-                usable = len(data) - len(data) % frame
-                rest = data[usable:]
-                if not usable:
-                    continue
-                pcm = np.frombuffer(data[:usable], dtype=dtype).reshape(-1, ch)
-                if size == 2:
-                    pcm = pcm.astype(np.float32) / 32768.0
+                if decoder is not None:
+                    pcm = decoder.decode(data)
+                    if not len(pcm):
+                        continue
+                else:
+                    data = rest + data
+                    usable = len(data) - len(data) % frame
+                    rest = data[usable:]
+                    if not usable:
+                        continue
+                    pcm = np.frombuffer(data[:usable], dtype=dtype).reshape(-1, ch)
+                    if size == 2:
+                        pcm = pcm.astype(np.float32) / 32768.0
                 if ch == 1:
                     pcm = np.repeat(pcm, 2, axis=1)
                 elif ch > 2:
@@ -279,6 +298,8 @@ class Player:
             pass
         finally:
             sock.close()
+            if decoder is not None:
+                decoder.close()
             with self.lock:
                 current = self.gen == gen
                 if current:
@@ -678,13 +699,18 @@ class SoundSender:
             """Send the format, wait for the yes. Returns what to stream with."""
             remote = sock.route == "tailscale"
             choice = self.quality()
-            if choice not in QUALITY:
-                choice = "cd" if remote else "lossless"   # auto
+            auto = choice not in QUALITY
+            if auto:
+                choice = "cd" if remote else "lossless"
             q = QUALITY[choice]
             out_rate = rate // 2 if q["half_rate"] else rate
             out_ch = 1 if q["mono"] else min(channels, 2)
+            # Opus over Tailscale (Auto) and for Data saver, if both ends have it. Lossless and CD
+            # quality, when picked, stay PCM.
+            offer = ((auto and remote) or choice == "saver") and opus.available() and out_rate in opus.RATES
             sock.send_json({"rate": out_rate, "channels": out_ch, "format": q["format"], "remote": remote,
-                            "buffer_ms": REMOTE_MS if remote else TARGET_MS, "from": self.node.name})
+                            "buffer_ms": REMOTE_MS if remote else TARGET_MS, "from": self.node.name,
+                            **({"opus": True} if offer else {})})
             sock.settimeout(REPLY_WAIT)
             try:
                 reply = sock.recv_json()
@@ -693,8 +719,12 @@ class SoundSender:
             if reply.get("ok") is False:
                 raise Refused(str(reply.get("error") or "it said no")[:160])
             sock.settimeout(None)
+            encoder = None
+            if offer and reply.get("format") == "opus":
+                encoder = opus.Encoder(out_rate, out_ch, np)
+                q = {**q, "format": "opus", "label": "Opus"}
             threading.Thread(target=listen, args=(sock,), daemon=True, name="sound replies").start()
-            return {"q": q, "out_rate": out_rate, "out_ch": out_ch, "remote": remote}
+            return {"q": q, "out_rate": out_rate, "out_ch": out_ch, "remote": remote, "encoder": encoder}
 
         def listen(sock):
             """Messages from the receiver while we stream (it may tell us to stop)."""
@@ -808,7 +838,12 @@ class SoundSender:
                     except queue.Empty:
                         break
                 got_any[0] = True
-                put(convert(pcm, channels, fmt["q"], np))
+                data = convert(pcm, channels, fmt["q"], np)
+                if fmt["encoder"] is not None:
+                    data = fmt["encoder"].encode(data)    # empty until a whole 20 ms packet is ready
+                    if not data:
+                        continue
+                put(data)
                 last_sent = time.time()
             if "reason" in why_stopped:
                 self.on_status(f"Stopped: {why_stopped['reason']}.", "off")

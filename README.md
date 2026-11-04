@@ -360,6 +360,6 @@ program; the Mac and Windows downloads include its engine, built from Deskflow's
 licence and a link to that source are next to it). It builds on [Tailscale](https://github.com/tailscale/tailscale) (BSD-3-Clause),
 [pywebview](https://github.com/r0x0r/pywebview), [Expo](https://expo.dev) and
 [React Native](https://reactnative.dev), [python-zeroconf](https://github.com/python-zeroconf/python-zeroconf),
-[sounddevice](https://github.com/spatialaudio/python-sounddevice),
+[sounddevice](https://github.com/spatialaudio/python-sounddevice), [Opus](https://opus-codec.org) (BSD-3-Clause),
 [cryptography](https://github.com/pyca/cryptography) and the
 [noble](https://paulmillr.com/noble/) libraries.

@@ -6,7 +6,7 @@ Everything runs over one TCP port. Each new connection starts with a JSON
 header line saying what it is:
   {"type": "control", ...}  long-lived: pairing, clipboard, keep-alive
   {"type": "file", ...}     one file, raw bytes follow, receiver replies "ok"
-  {"type": "audio", ...}    raw PCM stream (Windows sound -> Mac speakers)
+  {"type": "audio", ...}    sound stream, raw PCM or Opus (see audio.py)
 
 Devices announce themselves every 1.5 s with UDP broadcast (IPv4) and link-local
 multicast (IPv6, so IPv6-only Wi-Fi and phone hotspots work too). Devices on
@@ -1868,7 +1868,7 @@ def clean_audio(p):
     if not isinstance(buffer_ms, int) or not 20 <= buffer_ms <= 2000:
         buffer_ms = 120
     return {"rate": rate, "channels": ch, "format": "f32" if p.get("format") == "f32" else "s16",
-            "remote": bool(p.get("remote")), "buffer_ms": buffer_ms}
+            "remote": bool(p.get("remote")), "buffer_ms": buffer_ms, "opus": p.get("opus") is True}
 
 
 def _trim_addrs(peer, keep=12):

@@ -103,7 +103,7 @@ for p in (pB, pA):
     p.addrs.pop("127.0.0.1", None)                                # "left home" again
 starts, fed, states = [], [0], []
 class Silent(audio.Player):
-    def start(self, rate, target_ms=120): starts.append(time.time()); self.rate, self.target_ms = rate, target_ms; self.stream = True
+    def start(self, rate, target_ms=120, floor_ms=20): starts.append(time.time()); self.rate, self.target_ms = rate, target_ms; self.stream = True
     def stop(self): self.stream = None
     def feed(self, pcm): fed[0] += len(pcm)
 player = Silent()

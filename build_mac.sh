@@ -12,11 +12,19 @@ ARCH=$(uname -m); [ "$ARCH" = x86_64 ] && ARCH=amd64
 [ -x .venv/bin/python ] || python3 -m venv .venv
 .venv/bin/python -m pip install --quiet --upgrade -r requirements-mac.txt pyinstaller
 [ -f "bin/linkts-mac-$ARCH" ] || (cd helper && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "../bin/linkts-mac-$ARCH" .)
+# Opus for sound over Tailscale (built from Xiph's source if cmake is here); without it sound goes as PCM
+if [ ! -f bin/libopus.0.dylib ] && command -v cmake > /dev/null; then sh packaging/build_opus.sh; fi
+set --
+if [ -f bin/libopus.0.dylib ]; then
+  set -- --add-binary "$L/bin/libopus.0.dylib:." --add-data "$L/bin/opus-COPYING.txt:."
+else
+  echo "No libopus (brew install cmake, then build again): sound over Tailscale will go as PCM"
+fi
 # (PyInstaller reads relative paths from --specpath, so every path here is absolute)
 .venv/bin/python -m PyInstaller --noconfirm --clean --windowed --name WinLink --icon "$L/assets/WinLink.icns" \
   --osx-bundle-identifier local.akshat.winlink --paths "$L/src" --add-data "$L/src/webui:webui" --collect-all webview \
   --collect-submodules zeroconf --hidden-import ScreenCaptureKit --hidden-import CoreMedia --hidden-import dispatch \
-  --add-data "$L/assets/WinLink.png:." --add-binary "$L/bin/linkts-mac-$ARCH:." \
+  --add-data "$L/assets/WinLink.png:." --add-binary "$L/bin/linkts-mac-$ARCH:." "$@" \
   --distpath "$L/build/dist" --workpath "$L/build/work" --specpath "$L/build" "$L/src/link.py"
 P=build/dist/WinLink.app/Contents/Info.plist
 plutil -insert NSLocalNetworkUsageDescription -string "WinLink finds your other computers on this Wi-Fi to share the clipboard, files and sound." "$P"

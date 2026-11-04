@@ -157,15 +157,21 @@ jobs:
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "-s -w -H windowsgui" -o ../bin/linkts-windows-$arch.exe .
           done
+      - name: Opus
+        shell: bash
+        run: sh packaging/build_opus.sh
       - name: Build WinLink.exe
         run: |
           python -m pip install --upgrade -r requirements-windows.txt pyinstaller
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name WinLink --icon assets\WinLink.ico --paths src --add-data "src\webui;webui" --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-submodules zeroconf --collect-submodules pystray --add-data "assets\WinLink.png;." --add-binary "bin\linkts-windows-amd64.exe;." --add-binary "bin\linkts-windows-arm64.exe;." src\link.py
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name WinLink --icon assets\WinLink.ico --paths src --add-data "src\webui;webui" --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-submodules zeroconf --collect-submodules pystray --add-data "assets\WinLink.png;." --add-binary "bin\linkts-windows-amd64.exe;." --add-binary "bin\linkts-windows-arm64.exe;." --add-binary "bin\opus.dll;." --add-data "bin\opus-COPYING.txt;." src\link.py
           Copy-Item deskflow-engine dist\WinLink\deskflow -Recurse
       - name: Check it
         run: |
           python -c "import sys; sys.path.insert(0, 'src'); import app, kvm, net, cli"
           if (-not (Test-Path dist\WinLink\deskflow\deskflow-core.exe)) { throw "the engine is missing" }
+          if (-not (Get-ChildItem dist\WinLink -Recurse -Filter opus.dll)) { throw "libopus is missing" }
+          python packaging\check_opus.py src
+          if ($LASTEXITCODE) { throw "Opus check failed" }
           & dist\WinLink\deskflow\deskflow-core.exe --version
       - name: Installer
         run: |
@@ -204,6 +210,8 @@ jobs:
       - name: Check it
         run: |
           WinLink.app/Contents/Library/Deskflow.app/Contents/MacOS/deskflow-core --version
+          find WinLink.app -name libopus.0.dylib | grep . || { echo "libopus is missing"; exit 1; }
+          .venv/bin/python packaging/check_opus.py src
           WINLINK_HEADLESS=1 LINK_HOME="$RUNNER_TEMP/home" perl -e 'alarm 60; exec @ARGV' WinLink.app/Contents/MacOS/WinLink help | head -5
           codesign --verify --deep WinLink.app
       - name: Disk image
@@ -257,6 +265,7 @@ jobs:
           WINLINK_HEADLESS=1 LINK_HOME="$RUNNER_TEMP/home" timeout 60 winlink help | head -5
           # no screen here: pystray (tray) needs one, so it's left out of this import check
           /usr/bin/python3 -c "import sys; sys.path[:0] = ['/usr/lib/winlink/src', '/usr/lib/winlink/vendor']; import webview, sounddevice, zeroconf, app, kvm, net"
+          /usr/bin/python3 packaging/check_opus.py /usr/lib/winlink/src
       - uses: actions/upload-artifact@v4
         with: {name: "winlink-linux-${{ matrix.arch }}", path: "release/*", retention-days: 14}
 
