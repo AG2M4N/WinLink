@@ -3,7 +3,8 @@ import { NativeModule, requireNativeModule } from "expo";
 type Events = {
   onPcm(e: { data: string }): void;
   onCapture(e: { state: "started" | "stopped" | "error"; error?: string; rate?: number; channels?: number }): void;
-  onClipboardShare(e: { kind: "text"; text: string } | { kind: "image"; png: string }): void;
+  /** auto: sent by "Send copies automatically" right after a copy (not a tap). */
+  onClipboardShare(e: ({ kind: "text"; text: string } | { kind: "image"; png: string }) & { auto?: boolean }): void;
   onNetwork(e: { up: boolean; wifi: boolean }): void;
 };
 
@@ -38,6 +39,12 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   /** Stop it and delete its stored state (after signing out). */
   tsWipe(): void;
   takePendingClip(): { kind: "text"; text: string } | { kind: "image"; png: string } | null;
+  /** Android, newer builds: "Send copies automatically" and the two permissions it needs. */
+  autoClipStatus(): { on: boolean; logs: boolean; overlay: boolean; running: boolean; package: string };
+  setAutoClip(on: boolean): void;
+  /** WinLink is about to set the clipboard itself (from a computer): don't send it back. */
+  markOwnClip(): void;
+  openOverlaySettings(): void;
   saveToDownloads(path: string, name: string, sub: string): Promise<string>;
   deleteSaved(uri: string): Promise<boolean>;
   openSaved(uri: string, mime: string | null): Promise<void>;

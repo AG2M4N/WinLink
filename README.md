@@ -166,6 +166,16 @@ themselves travel when you paste them.
 Phones don't take copied files (send them instead). On Android, sending the phone's clipboard is
 one tap: the *Send clipboard* button, the Quick Settings tile or the notification button.
 
+**Android, no tap at all (advanced):** Android lets only the app on screen read the clipboard, but
+*Clipboard → Send copies automatically* works around it with two permissions you give once:
+1. With USB debugging on, run `adb shell pm grant local.akshat.winlink android.permission.READ_LOGS`,
+   then close and reopen WinLink (allow it if Android asks about reading device logs).
+2. Allow WinLink to *display over other apps* (the button in the app opens the setting).
+
+WinLink then watches Android's log for the line it writes when something is copied, and opens an
+invisible screen for a moment to read and send it. The log permission covers the whole system log;
+WinLink only reads the clipboard service's lines. Turn the switch off or uninstall to take it back.
+
 ### Sound
 Any computer (and Android) can share its sound: **Sound → Share sound**, then choose where it plays. The
 device playing it shows **Stop**, which also stops the sender. A device sharing its own sound won't play
@@ -349,7 +359,7 @@ docs/           screenshots
 ```
 
 ## Roadmap
-- Automatic phone → computer clipboard on Android (text-selection menu, send on open, optional automatic mode).
+- Phone → computer clipboard on Android without ADB (text-selection menu, send on open).
 - iPhone release build.
 
 ## License

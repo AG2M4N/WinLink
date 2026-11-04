@@ -52,6 +52,7 @@ class LinkService : Service() {
     super.onCreate()
     running = true
     goForeground("Connected")
+    try { ClipWatcher.sync(this) } catch (e: Throwable) {}
   }
 
   override fun onDestroy() {

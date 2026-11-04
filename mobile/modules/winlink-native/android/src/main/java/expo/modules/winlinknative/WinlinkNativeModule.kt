@@ -45,6 +45,7 @@ class WinlinkNativeModule : Module() {
     OnCreate {
       Bridge.module = this@WinlinkNativeModule
       watchNetwork()
+      try { ClipWatcher.sync(context) } catch (e: Throwable) {}
     }
     OnDestroy {
       if (Bridge.module === this@WinlinkNativeModule) Bridge.module = null
@@ -190,6 +191,26 @@ class WinlinkNativeModule : Module() {
       val c = Bridge.pendingClip
       Bridge.pendingClip = null
       c
+    }
+
+    // ---- sending copies automatically (see ClipWatcher)
+    Function("autoClipStatus") {
+      val ctx = context
+      ClipWatcher.sync(ctx)               // picks up permissions given since (e.g. over ADB)
+      mapOf("on" to ClipWatcher.enabled(ctx), "logs" to ClipWatcher.hasLogs(ctx), "overlay" to ClipWatcher.hasOverlay(ctx),
+        "running" to ClipWatcher.running, "package" to ctx.packageName)
+    }
+    Function("setAutoClip") { on: Boolean -> ClipWatcher.setEnabled(context, on) }
+    Function("markOwnClip") { ClipWatcher.markOwn() }
+    Function("openOverlaySettings") {
+      val ctx = context
+      val i = Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      try {
+        ctx.startActivity(i)
+      } catch (e: Throwable) {
+        ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      }
     }
 
     // ---- received files

@@ -51,9 +51,19 @@ export interface Snapshot {
   };
   keepAlive: boolean;
   background: { unrestricted: boolean; running: boolean } | null;    // Android, newer builds
+  autoClip: AutoClipView | null;                                      // Android, newer builds
   tailscale: TailscaleView;
   anywhere: AnywhereView | null;
   notice: { text: string; at: number } | null;
+}
+
+/** "Send copies automatically": on, and which of its two permissions the person has given. */
+export interface AutoClipView {
+  on: boolean;
+  logs: boolean;        // READ_LOGS, given once over ADB
+  overlay: boolean;     // display over other apps, given in Settings
+  running: boolean;
+  pkg: string;
 }
 
 export interface TailscaleView {
@@ -102,6 +112,51 @@ class Controller {
       return { unrestricted: b.unrestricted, running: b.serviceRunning };
     } catch {
       return null;                       // an older build
+    }
+  }
+
+  private autoClipCache: AutoClipView | null = null;
+  private autoClipAt = 0;
+
+  /** Asked at most every few seconds (it also starts or stops the watcher to match). */
+  private autoClip(): AutoClipView | null {
+    if (RN.OS !== "android") return null;
+    if (Date.now() - this.autoClipAt < 3000) return this.autoClipCache;
+    this.autoClipAt = Date.now();
+    try {
+      const a = Native.autoClipStatus();
+      this.autoClipCache = { on: a.on, logs: a.logs, overlay: a.overlay, running: a.running, pkg: a.package };
+    } catch {
+      this.autoClipCache = null;          // an older build
+    }
+    return this.autoClipCache;
+  }
+
+  setAutoClip(on: boolean) {
+    try {
+      Native.setAutoClip(on);
+    } catch {
+      return;
+    }
+    this.autoClipAt = 0;
+    this.changed();
+  }
+
+  openOverlaySettings() {
+    try {
+      Native.openOverlaySettings();
+    } catch {
+      this.setNotice("Allow it in Android Settings › Apps › WinLink › Display over other apps.");
+    }
+  }
+
+  /** WinLink sets the clipboard itself: tell the watcher, so it isn't sent straight back. */
+  private markOwnClip() {
+    if (RN.OS !== "android") return;
+    try {
+      Native.markOwnClip();
+    } catch {
+      /* an older build */
     }
   }
 
@@ -172,6 +227,7 @@ class Controller {
       }
       this.anywhere?.nudge();
       this.updateKeepAlive();
+      this.autoClipAt = 0;                         // e.g. back from allowing display over other apps
       this.changed();                              // e.g. back from allowing background use
     } else if (s === "background" && RN.OS === "ios") {
       // iOS suspends apps soon after they leave the screen; sound keeps us alive while it plays.
@@ -265,6 +321,7 @@ class Controller {
     switch (e.kind) {
       case "clip_in": {
         if (!this.settings?.clipboard) break;
+        this.markOwnClip();
         if (e.clip.kind === "text") {
           Clipboard.setStringAsync(e.clip.text).catch((err) => platform.log("warn", `couldn't set the clipboard: ${err}`));
           this.remember("in", e.clip.text, e.peer.name);
@@ -420,7 +477,7 @@ class Controller {
       return { ready: false, me: { name: "", os: platform.os }, devices: [], transfers: [], received: [],
         clipboard: { enabled: true, history: [] }, sound: { canShare: false, sharing: false, shareText: "", shareTone: "muted",
           target: null, playingFrom: null, playingInfo: "", latency: "auto", volume: 1 }, keepAlive: true,
-        background: null, tailscale: this.tailscale, anywhere: null, notice: null };
+        background: null, autoClip: null, tailscale: this.tailscale, anywhere: null, notice: null };
     }
     const devices: DeviceView[] = [...node.peers.values()].map((p) => ({
       id: p.id,
@@ -463,6 +520,7 @@ class Controller {
       },
       keepAlive: s.keepAlive,
       background: this.background(),
+      autoClip: this.autoClip(),
       tailscale: this.tailscale,
       anywhere: this.anywhere?.view() ?? null,
       notice: this.notice,
@@ -575,20 +633,30 @@ class Controller {
     this.shareClip({ kind: "text", text });
   }
 
-  shareClip(clip: { kind: "text"; text: string } | { kind: "image"; png: string }) {
+  /** auto: from "Send copies automatically", right after a copy: quiet, and never what a computer just sent. */
+  shareClip(c: ({ kind: "text"; text: string } | { kind: "image"; png: string }) & { auto?: boolean }) {
     if (!this.node) return;
+    const auto = c.auto === true;
+    const clip = c.kind === "text" ? { kind: "text" as const, text: c.text } : { kind: "image" as const, png: c.png };
     const on = this.node.connected();
+    if (auto) {
+      if (!on.length || !this.settings?.clipboard) return;
+      const last = this.clipHistory[0];
+      if (clip.kind === "text" && last && last.text === clip.text.slice(0, 500) && Date.now() - last.at < 10000) return;
+    }
     if (!on.length) {
       this.setNotice("Not connected to a computer yet.");
       return;
     }
     this.node.sendClip(clip);
     this.remember("out", clip.kind === "text" ? clip.text : "Image", on.map((p) => p.name).join(", "));
-    this.setNotice(`Clipboard sent to ${on.map((p) => p.name).join(", ")}.`);
+    if (auto) this.changed();
+    else this.setNotice(`Clipboard sent to ${on.map((p) => p.name).join(", ")}.`);
   }
 
   async copyAgain(item: ClipItem) {
     try {
+      this.markOwnClip();
       await Clipboard.setStringAsync(item.text);
     } catch (e) {
       this.setNotice(`Couldn't copy it: ${(e as Error).message}`);

@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -11,6 +12,10 @@
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <!-- To ask once to be left out of battery optimisation, so WinLink isn't paused in the background. -->
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+  <!-- Optional "Send copies automatically": never granted to apps on their own, only by the person
+       over ADB (adb shell pm grant … READ_LOGS) and in Settings (display over other apps). See ClipWatcher. -->
+  <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
   <!-- To see whether the Tailscale app is installed (Android 11+ hides other apps otherwise). -->
   <queries>

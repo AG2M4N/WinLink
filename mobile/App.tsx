@@ -11,7 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Native from "./modules/winlink-native";
-import { ClipItem, controller, DeviceView, Snapshot, TransferView } from "./src/controller";
+import * as Clipboard from "expo-clipboard";
+import { AutoClipView, ClipItem, controller, DeviceView, Snapshot, TransferView } from "./src/controller";
 
 // ---------------------------------------------------------------- look
 const LIGHT = { bg: "#F4F4F2", card: "#FFFFFF", raised: "#EFEFEC", text: "#1C1C1E", text2: "#6C6C70", text3: "#9A9AA0",
@@ -416,6 +417,51 @@ function TransferRow({ c, st, t, first }: { c: Colors; st: PageProps["st"]; t: T
 }
 
 // ---------------------------------------------------------------- clipboard
+/** Android: "Send copies automatically", with the one-time setup it needs. */
+function AutoClipCard({ c, st, a }: { c: PageProps["c"]; st: PageProps["st"]; a: AutoClipView }) {
+  const cmd = `adb shell pm grant ${a.pkg} android.permission.READ_LOGS`;
+  const ready = a.logs && a.overlay;
+  return (
+    <View style={st.card}>
+      <View style={st.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={st.name}>Send copies automatically</Text>
+          <Text style={st.sub}>Advanced. Everything you copy on this phone goes to your computers, no tap needed.</Text>
+        </View>
+        <Switch value={a.on} onValueChange={(v) => controller.setAutoClip(v)} trackColor={{ true: c.accent }} />
+      </View>
+      {a.on && !a.logs ? (
+        <View style={{ marginTop: 12 }}>
+          <Text style={st.sub}>1. Android only allows this with a permission you give once from a computer. Turn on USB debugging (Settings › Developer options), connect the phone, and run:</Text>
+          <Text selectable style={[st.log, { marginTop: 6 }]}>{cmd}</Text>
+          <View style={{ marginTop: 8, alignItems: "flex-start" }}>
+            <Button st={st} title="Copy command" kind="quiet" onPress={() => void Clipboard.setStringAsync(cmd)} />
+          </View>
+          <Text style={[st.sub, { marginTop: 6 }]}>Then close WinLink fully and open it again. If Android asks whether WinLink may read the device logs, allow it.</Text>
+        </View>
+      ) : null}
+      {a.on && !a.overlay ? (
+        <View style={{ marginTop: 12 }}>
+          <Text style={st.sub}>{a.logs ? "" : "2. "}Allow WinLink to display over other apps, so it can read each copy for a moment while you're in another app.</Text>
+          <View style={{ marginTop: 8, alignItems: "flex-start" }}>
+            <Button st={st} title="Allow" kind="primary" onPress={() => controller.openOverlaySettings()} />
+          </View>
+        </View>
+      ) : null}
+      {a.on && ready ? (
+        <Text style={[st.sub, { marginTop: 10, color: a.running ? c.text2 : c.warn }]}>
+          {a.running ? "On. Copies go to your connected computers as you make them." : "Waiting to start: open WinLink again."}
+        </Text>
+      ) : null}
+      {a.on ? (
+        <Text style={[st.hint, { marginTop: 10 }]}>
+          The log permission lets WinLink read Android's system log, not just the clipboard. WinLink only looks for the line Android writes when something is copied, and sends nothing else. Turn this off or uninstall WinLink to take it back.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function ClipboardPage({ c, st, snap }: PageProps) {
   return (
     <View>
@@ -438,6 +484,7 @@ function ClipboardPage({ c, st, snap }: PageProps) {
             : "Faster: make a Shortcut that opens winlink://send-clipboard, then set it on Settings › Accessibility › Touch › Back Tap. Double-tap the back of the phone after copying."}
         </Text>
       </View>
+      {snap.autoClip ? <AutoClipCard c={c} st={st} a={snap.autoClip} /> : null}
       <Section st={st} title="History" right={snap.clipboard.history.length ? <Button st={st} title="Clear" kind="quiet" onPress={() => controller.clearClipHistory()} /> : undefined}>
         <View style={st.card}>
           {snap.clipboard.history.length ? snap.clipboard.history.map((h: ClipItem, i) => (
