@@ -126,12 +126,50 @@ def screen_name(device_name, device_id):
     return f"{clean}-{device_id[:4]}"
 
 
+def _old_copies(folder):
+    for root, _dirs, files in os.walk(folder):
+        for name in files:
+            if ".old-" in name:
+                yield os.path.join(root, name)
+
+
+def _stop_strays(folder):
+    """Windows: end deskflow-core processes running from WinLink's own copy that no WinLink owns any
+    more (left behind when WinLink was closed abruptly, e.g. by an update). They hold Deskflow's port
+    and lock the files. Only this folder's: a Deskflow the person runs themselves is left alone."""
+    if not IS_WIN:
+        return
+    target = os.path.normcase(os.path.abspath(folder)) + os.sep
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "Get-Process deskflow-core -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.Id)`t$($_.Path)\" }"],
+            capture_output=True, text=True, timeout=15, creationflags=0x08000000).stdout
+    except (OSError, subprocess.SubprocessError):
+        return
+    for line in out.splitlines():
+        pid, _, path = line.partition("\t")
+        if pid.strip().isdigit() and path and os.path.normcase(os.path.abspath(path)).startswith(target):
+            try:
+                subprocess.run(["taskkill", "/F", "/PID", pid.strip()], capture_output=True, timeout=10,
+                               creationflags=0x08000000)
+                log.info("keyboard and mouse: ended a leftover deskflow-core (%s)", pid.strip())
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
 def portable_core(core, folder):
     """Windows: Deskflow reads its trusted lists from C:\\ProgramData\\Deskflow\\tls whatever --settings
     says, unless it runs in portable mode (a settings\\Deskflow.conf next to the program). So WinLink runs
     its own portable copy: the installed Deskflow folder mirrored into `folder` with hard links (no
     space used; a real copy if links can't be made), refreshed when Deskflow is updated."""
     src = os.path.dirname(core)
+    _stop_strays(folder)
+    for old in _old_copies(folder):              # set aside last time because they were in use
+        try:
+            os.remove(old)
+        except OSError:
+            pass
     for root, dirs, files in os.walk(src):
         rel = os.path.relpath(root, src)
         if rel.split(os.sep)[0] == "settings":
@@ -144,7 +182,13 @@ def portable_core(core, folder):
                 sa, sb = os.stat(a), os.stat(b)
                 if os.path.samefile(a, b) or (sa.st_size == sb.st_size and int(sa.st_mtime) == int(sb.st_mtime)):
                     continue
-                os.remove(b)
+                try:
+                    os.remove(b)
+                except PermissionError:
+                    # In use (a deskflow-core still running): Windows won't delete it but does let it
+                    # be renamed. Put it aside; it's deleted next time. Failing here left keyboard and
+                    # mouse sharing stuck on "Starting" after an update.
+                    os.replace(b, f"{b}.old-{os.getpid()}-{int(time.time())}")
             try:
                 os.link(a, b)
             except OSError:
@@ -683,7 +727,15 @@ class Sharing:
                     c.update(fp=fp, state="starting", text="")
                     self._apply_server()
             elif op == "dialback" and peer.id in self.clients and re.fullmatch(r"[0-9a-f]{16}", str(msg.get("tid", ""))):
-                threading.Thread(target=self._dial_back, args=(peer, msg["tid"]), daemon=True, name="kvm dial back").start()
+                # Only while our Deskflow server is up to take it, and not over and over: a follower
+                # whose own Deskflow keeps failing asks every few seconds, forever.
+                c = self.clients[peer.id]
+                now = time.time()
+                c["dialbacks"] = [t for t in c.get("dialbacks", []) if now - t < 60] + [now]
+                if self.role == "server" and self.engine is not None and self.engine.running \
+                        and len(c["dialbacks"]) <= 6:
+                    threading.Thread(target=self._dial_back, args=(peer, msg["tid"]), daemon=True,
+                                     name="kvm dial back").start()
             elif op == "path" and peer.id in self.clients and msg.get("path") in ("direct", "tunnel", "relay"):
                 self.clients[peer.id]["path"] = msg["path"]
             elif op == "ping":

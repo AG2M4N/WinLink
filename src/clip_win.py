@@ -218,7 +218,10 @@ class Clipboard:
             else:
                 if item.get("png"):
                     self._set(self.png_format, item["png"])
-                bmp = item.get("bmp")
+                # Many Windows apps (Paint, Office, …) only paste the standard bitmap, and phones send
+                # PNG only: make the bitmap too.
+                from net import png_to_bmp
+                bmp = item.get("bmp") or png_to_bmp(item.get("png"))
                 if bmp and bmp[:2] == b"BM":
                     dib = bmp[14:]
                     header_size, = struct.unpack_from("<I", dib, 0)

@@ -1263,9 +1263,11 @@ class Node:
             msg.update({k: item[k] for k in ("id", "count", "size")})
             msg["names"] = item["names"][:CLIP_FILES_SHOWN]
         else:
-            for key in ("png", "bmp"):
-                if item.get(key):
-                    msg[key] = base64.b64encode(item[key]).decode()
+            png = item.get("png") or bmp_to_png(item.get("bmp"))
+            if png:                       # phones only take PNG; a Windows copy is often a BMP only
+                msg["png"] = base64.b64encode(png).decode()
+            if item.get("bmp"):
+                msg["bmp"] = base64.b64encode(item["bmp"]).decode()
 
         def work():
             for peer in self.connected():
@@ -1876,6 +1878,46 @@ def clean_beacon(info):
     except (ValueError, TypeError):
         return None
     return {"id": h["id"], "name": h["name"], "os": h["os"], "port": h["port"]}
+
+
+def bmp_to_png(bmp):
+    """A BMP file -> PNG bytes (None if there's no BMP, or Pillow can't read it)."""
+    if not bmp or bmp[:2] != b"BM":
+        return None
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(bmp)) as im:
+            out = io.BytesIO()
+            im.save(out, "PNG")
+            return out.getvalue()
+    except Exception as e:  # noqa: BLE001
+        log.debug("clipboard: couldn't turn a BMP into PNG: %s", e)
+        return None
+
+
+def png_to_bmp(png):
+    """PNG bytes -> a BMP file (None if Pillow can't read it). Transparency is laid on white."""
+    if not png or png[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(png)) as im:
+            im.load()
+            if im.mode in ("RGBA", "LA", "P"):
+                im = im.convert("RGBA")
+                flat = Image.new("RGB", im.size, (255, 255, 255))
+                flat.paste(im, mask=im.getchannel("A"))
+                im = flat
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+            out = io.BytesIO()
+            im.save(out, "BMP")
+            return out.getvalue()
+    except Exception as e:  # noqa: BLE001
+        log.debug("clipboard: couldn't turn a PNG into BMP: %s", e)
+        return None
 
 
 def clean_clip(msg):

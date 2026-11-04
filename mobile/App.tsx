@@ -6,7 +6,7 @@ import * as Sharing from "expo-sharing";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  ActivityIndicator, Alert, GestureResponderEvent, Image, Modal, PanResponder, Platform, Pressable, ScrollView,
+  ActivityIndicator, Alert, GestureResponderEvent, Image, PanResponder, Platform, Pressable, ScrollView,
   StyleSheet, Switch, Text, TextInput, useColorScheme, View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -44,7 +44,7 @@ export default function App() {
   );
 }
 
-type Tab = "devices" | "files" | "clipboard" | "sound" | "settings";
+type Tab = "devices" | "trackpad" | "files" | "clipboard" | "sound" | "settings";
 
 function Main() {
   const scheme = useColorScheme();
@@ -103,7 +103,7 @@ function Main() {
         </Pressable>
       ) : null}
       {share.hasShareIntent ? <ShareSheet c={c} st={st} snap={snap} /> : null}
-      {snap.trackpad ? <Trackpad c={c} st={st} pad={snap.trackpad} /> : null}
+      {snap.ready && tab === "trackpad" ? <TrackpadPage c={c} st={st} snap={snap} /> : (
       <ScrollView contentContainerStyle={st.page} keyboardShouldPersistTaps="handled">
         {!snap.ready ? <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} /> : null}
         {snap.ready && tab === "devices" ? <Devices c={c} st={st} snap={snap} /> : null}
@@ -112,8 +112,9 @@ function Main() {
         {snap.ready && tab === "sound" ? <Sound c={c} st={st} snap={snap} /> : null}
         {snap.ready && tab === "settings" ? <Settings c={c} st={st} snap={snap} /> : null}
       </ScrollView>
+      )}
       <View style={st.tabs}>
-        {(["devices", "files", "clipboard", "sound", "settings"] as Tab[]).map((t) => (
+        {(["devices", "trackpad", "files", "clipboard", "sound", "settings"] as Tab[]).map((t) => (
           <Pressable key={t} onPress={() => setTab(t)} style={st.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === t }}>
             <View style={[st.tabPill, tab === t && st.tabPillOn]}>
               <Image source={TAB_ICONS[t]} style={[st.tabIcon, { tintColor: tab === t ? c.accent : c.text2 }]} />
@@ -129,12 +130,13 @@ function Main() {
 
 const TAB_ICONS = {
   devices: require("./assets/tabs/devices.png"),
+  trackpad: require("./assets/tabs/trackpad.png"),
   files: require("./assets/tabs/files.png"),
   clipboard: require("./assets/tabs/clipboard.png"),
   sound: require("./assets/tabs/sound.png"),
   settings: require("./assets/tabs/settings.png"),
 } as const;
-const LABELS: Record<Tab, string> = { devices: "Devices", files: "Files", clipboard: "Clipboard", sound: "Sound", settings: "Settings" };
+const LABELS: Record<Tab, string> = { devices: "Devices", trackpad: "Trackpad", files: "Files", clipboard: "Clipboard", sound: "Sound", settings: "Settings" };
 
 interface PageProps {
   c: Colors;
@@ -321,7 +323,39 @@ const DOUBLE_MS = 350;     // a second touch this soon after a tap: double click
 /** Full screen: the phone becomes a touchpad for one computer.
  *  One finger moves the pointer · tap: click · two-finger tap: right click · two fingers: scroll ·
  *  tap, then touch again and move: drag. */
-function Trackpad({ c, st, pad }: { c: Colors; st: PageProps["st"]; pad: NonNullable<Snapshot["trackpad"]> }) {
+/** Its own tab: choose a connected computer, then the rest of the screen is its touchpad. */
+function TrackpadPage({ c, st, snap }: PageProps) {
+  const computers = snap.devices.filter((d) => d.state === "on" && !["android", "ios"].includes(d.os));
+  const chosen = computers.find((d) => d.id === snap.trackpad?.id) ?? computers[0] ?? null;
+  useEffect(() => {
+    if (chosen && snap.trackpad?.id !== chosen.id) controller.openTrackpad(chosen.id);
+  }, [chosen?.id]);
+  useEffect(() => () => controller.closeTrackpad(), []);          // leaving the tab: let go of any button
+  return (
+    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
+      {computers.length ? (
+        <>
+          {computers.length > 1 ? (
+            <View style={{ marginBottom: 10 }}>
+              <Chips st={st} options={computers.map((d) => [d.id, d.name] as [string, string])} value={chosen?.id ?? null}
+                onChange={(id) => controller.openTrackpad(id)} />
+            </View>
+          ) : (
+            <Text style={[st.sub, { marginBottom: 10 }]}>Controlling {chosen?.name}</Text>
+          )}
+          <Trackpad c={c} st={st} />
+        </>
+      ) : (
+        <View style={st.card}>
+          <Text style={st.name}>No computer connected</Text>
+          <Text style={st.sub}>Connect a Mac or PC on the Devices tab, then use this phone as its trackpad.</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function Trackpad({ c, st }: { c: Colors; st: PageProps["st"] }) {
   const g = useRef({ n: 0, most: 0, start: 0, moved: 0, x: 0, y: 0, t: 0, lastTap: 0, second: false, dragging: false }).current;
   const responder = useMemo(() => {
     const end = () => {
@@ -387,15 +421,7 @@ function Trackpad({ c, st, pad }: { c: Colors; st: PageProps["st"]; pad: NonNull
     });
   }, []);
   return (
-    <Modal visible animationType="slide" onRequestClose={() => controller.closeTrackpad()} supportedOrientations={["portrait", "landscape"]}>
-      <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: 44, paddingBottom: 24, paddingHorizontal: 16 }}>
-        <View style={[st.row, { marginBottom: 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={st.name}>{pad.name || "Computer"}</Text>
-            <Text style={[st.sub, { color: pad.on ? c.good : c.warn }]}>{pad.on ? "Trackpad" : "Not connected"}</Text>
-          </View>
-          <Button st={st} title="Done" kind="quiet" onPress={() => controller.closeTrackpad()} />
-        </View>
+    <View style={{ flex: 1 }}>
         <View {...responder.panHandlers}
           style={{ flex: 1, borderRadius: 18, backgroundColor: c.card, borderWidth: 1, borderColor: c.line,
             alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -413,8 +439,7 @@ function Trackpad({ c, st, pad }: { c: Colors; st: PageProps["st"]; pad: NonNull
             <Text style={st.name}>Right</Text>
           </Pressable>
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
@@ -432,9 +457,6 @@ function DeviceRow({ c, st, d }: { c: Colors; st: PageProps["st"]; d: DeviceView
         {d.state === "connecting" ? <ActivityIndicator color={c.accent} /> : null}
       </View>
       <View style={[st.row, { marginTop: 10, gap: 8 }]}>
-        {d.state === "on" && !["android", "ios"].includes(d.os) ? (
-          <Button st={st} title="Trackpad" kind="primary" onPress={() => controller.openTrackpad(d.id)} />
-        ) : null}
         {d.state === "on" ? <Button st={st} title="Disconnect" kind="quiet" onPress={() => controller.disconnect(d.id)} /> : null}
         {d.state === "available" || (d.state === "away" && d.trusted) ? (
           <Button st={st} title={d.trusted ? "Connect" : "Pair"} kind="primary" onPress={() => controller.connect(d.id)} />
