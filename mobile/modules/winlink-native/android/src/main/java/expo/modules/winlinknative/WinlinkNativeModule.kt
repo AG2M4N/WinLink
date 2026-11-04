@@ -209,7 +209,7 @@ class WinlinkNativeModule : Module() {
     }
 
     // ---- battery: keep the phone awake with the screen off only while this is true (see LinkService)
-    Function("setBusy") { on: Boolean -> LinkService.setBusy(on) }
+    Function("setBusy") { on: Boolean -> LinkService.markBusy(on) }
 
     // ---- a clock for JS timers in the background (React Native stops them there; see src/bgtimers.ts)
     Function("setTicking") { on: Boolean ->

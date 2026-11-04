@@ -9,7 +9,7 @@ SHA256=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1   # down
 W=build/opus
 mkdir -p "$W" bin
 T="$W/opus-$V.tar.gz"
-[ -f "$T" ] || curl -fsSL -o "$T" "https://downloads.xiph.org/releases/opus/opus-$V.tar.gz"
+[ -f "$T" ] || curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o "$T" "https://downloads.xiph.org/releases/opus/opus-$V.tar.gz"
 if command -v sha256sum > /dev/null; then echo "$SHA256  $T" | sha256sum -c -; else echo "$SHA256  $T" | shasum -a 256 -c -; fi
 rm -rf "$W/opus-$V" "$W/b"
 tar -xzf "$T" -C "$W"

@@ -31,7 +31,7 @@ class LinkService : Service() {
     @Volatile var instance: LinkService? = null
 
     /** JS says whether something's under way that must keep going with the screen off. */
-    fun setBusy(on: Boolean) {
+    fun markBusy(on: Boolean) {
       busy = on
       instance?.let { s -> android.os.Handler(android.os.Looper.getMainLooper()).post { s.applyLocks() } }
     }
