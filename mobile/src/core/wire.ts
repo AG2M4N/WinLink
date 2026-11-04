@@ -34,11 +34,36 @@ const LOW = 1 * 2 ** 20;
 // them (a big transfer with data always waiting) give the screen a turn every BREATH ms.
 const BREATH = 25;
 let lastBreath = Date.now();
+// Only while the app is on screen: in the background there's nothing to draw, and React Native may
+// stop running timers there, so a turn that waits on one could never end and the connection would
+// hang (the computer then sees the phone go offline while the phone still thinks it's connected).
+let onScreen = true;
+const breathing = new Set<() => void>();
+
+/** The app came on screen (true) or left it (false). Going off screen ends any turn in progress. */
+export function setOnScreen(on: boolean) {
+  onScreen = on;
+  if (!on) {
+    const waiting = [...breathing];
+    breathing.clear();
+    waiting.forEach((go) => go());
+  }
+}
 
 /** Let the screen and touches run if the JS thread has been busy for a while. */
 export async function breathe(): Promise<void> {
-  if (Date.now() - lastBreath < BREATH) return;
-  await new Promise<void>((r) => setTimeout(r, 0));
+  if (!onScreen || Date.now() - lastBreath < BREATH) return;
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      breathing.delete(go);
+      resolve();
+    };
+    breathing.add(go);
+    setTimeout(go, 0);
+  });
   lastBreath = Date.now();
 }
 

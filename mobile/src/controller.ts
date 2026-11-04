@@ -6,6 +6,7 @@ import Zeroconf from "react-native-zeroconf";
 import Native from "../modules/winlink-native";
 import { Anywhere, AnywhereView } from "./anywhere";
 import { Batch, Node, NodeEvent, Peer, PORT, SoundSender } from "./core/node";
+import { setOnScreen } from "./core/wire";
 import { AppSettings, ReceivedFile, fileSource, loadSettings, logLines, platform, saveSettings, soundStats } from "./platform";
 
 export interface DeviceView {
@@ -202,6 +203,7 @@ class Controller {
     if (this.settings.anywhere && this.anywhere.available) setTimeout(() => this.anywhere?.setOn(true), 500);   // after the port is open
     this.checkTailscale();
     setInterval(() => this.checkTailscale(), 4000);
+    setOnScreen(AppState.currentState === "active");
     AppState.addEventListener("change", (s) => this.onAppState(s));
     Native.addListener("onClipboardShare", (clip) => this.shareClip(clip));
     Native.addListener("onNetwork", (e) => this.onNetwork(e.up, e.wifi));
@@ -218,6 +220,7 @@ class Controller {
   }
 
   private onAppState(s: string) {
+    setOnScreen(s === "active");
     if (!this.node) return;
     if (s === "active") {
       this.node.start(PORT);
