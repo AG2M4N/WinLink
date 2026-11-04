@@ -6,8 +6,8 @@ import * as Sharing from "expo-sharing";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Switch, Text,
-  TextInput, useColorScheme, View,
+  ActivityIndicator, Alert, GestureResponderEvent, Image, Modal, PanResponder, Platform, Pressable, ScrollView,
+  StyleSheet, Switch, Text, TextInput, useColorScheme, View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Native from "./modules/winlink-native";
@@ -103,6 +103,7 @@ function Main() {
         </Pressable>
       ) : null}
       {share.hasShareIntent ? <ShareSheet c={c} st={st} snap={snap} /> : null}
+      {snap.trackpad ? <Trackpad c={c} st={st} pad={snap.trackpad} /> : null}
       <ScrollView contentContainerStyle={st.page} keyboardShouldPersistTaps="handled">
         {!snap.ready ? <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} /> : null}
         {snap.ready && tab === "devices" ? <Devices c={c} st={st} snap={snap} /> : null}
@@ -299,6 +300,124 @@ function TailscaleCard({ c, st, snap }: PageProps) {
   );
 }
 
+// ---------------------------------------------------------------- trackpad
+/** The middle of the fingers on the pad (one finger: that finger). */
+function centre(e: GestureResponderEvent) {
+  const t = e.nativeEvent.touches;
+  if (!t.length) return { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, n: 0 };
+  let x = 0;
+  let y = 0;
+  for (const p of t) {
+    x += p.pageX;
+    y += p.pageY;
+  }
+  return { x: x / t.length, y: y / t.length, n: t.length };
+}
+
+const TAP_MS = 250;        // a touch shorter than this, that barely moved, is a tap
+const TAP_MOVE = 10;       // points
+const DOUBLE_MS = 350;     // a second touch this soon after a tap: double click, or tap-and-drag
+
+/** Full screen: the phone becomes a touchpad for one computer.
+ *  One finger moves the pointer · tap: click · two-finger tap: right click · two fingers: scroll ·
+ *  tap, then touch again and move: drag. */
+function Trackpad({ c, st, pad }: { c: Colors; st: PageProps["st"]; pad: NonNullable<Snapshot["trackpad"]> }) {
+  const g = useRef({ n: 0, most: 0, start: 0, moved: 0, x: 0, y: 0, t: 0, lastTap: 0, second: false, dragging: false }).current;
+  const responder = useMemo(() => {
+    const end = () => {
+      const now = Date.now();
+      if (g.dragging) {
+        controller.pointerButton("left", false);
+        g.dragging = false;
+        g.lastTap = 0;
+      } else if (g.moved < TAP_MOVE && now - g.start < TAP_MS) {
+        if (g.most >= 2) {
+          controller.pointerClick("right", 1);
+          g.lastTap = 0;
+        } else {
+          controller.pointerClick("left", g.second ? 2 : 1);
+          g.lastTap = g.second ? 0 : now;
+        }
+      } else {
+        g.lastTap = 0;
+      }
+      g.n = 0;
+    };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        const p = centre(e);
+        Object.assign(g, { n: p.n, most: p.n, start: Date.now(), moved: 0, x: p.x, y: p.y, t: Date.now(),
+          second: Date.now() - g.lastTap < DOUBLE_MS, dragging: false });
+      },
+      onPanResponderMove: (e) => {
+        const p = centre(e);
+        if (!p.n) return;
+        if (p.n !== g.n) {                 // a finger joined or left: start again from here, no jump
+          g.n = p.n;
+          g.most = Math.max(g.most, p.n);
+          g.x = p.x;
+          g.y = p.y;
+          return;
+        }
+        const now = Date.now();
+        const dx = p.x - g.x;
+        const dy = p.y - g.y;
+        const dt = Math.max(1, now - g.t);
+        g.x = p.x;
+        g.y = p.y;
+        g.t = now;
+        g.moved += Math.abs(dx) + Math.abs(dy);
+        if (g.n >= 2) {
+          controller.pointerScroll(dx, dy);
+          return;
+        }
+        if (g.second && !g.dragging && g.moved > 6) {     // tap, then touch and move: drag
+          g.dragging = true;
+          controller.pointerButton("left", true);
+        }
+        const speed = Math.hypot(dx, dy) / dt;           // points per ms: fast swipes go further
+        const boost = 1 + Math.min(2.5, speed * 1.2);
+        controller.pointerMove(dx * boost, dy * boost);
+      },
+      onPanResponderRelease: end,
+      onPanResponderTerminate: end,
+    });
+  }, []);
+  return (
+    <Modal visible animationType="slide" onRequestClose={() => controller.closeTrackpad()} supportedOrientations={["portrait", "landscape"]}>
+      <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: 44, paddingBottom: 24, paddingHorizontal: 16 }}>
+        <View style={[st.row, { marginBottom: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.name}>{pad.name || "Computer"}</Text>
+            <Text style={[st.sub, { color: pad.on ? c.good : c.warn }]}>{pad.on ? "Trackpad" : "Not connected"}</Text>
+          </View>
+          <Button st={st} title="Done" kind="quiet" onPress={() => controller.closeTrackpad()} />
+        </View>
+        <View {...responder.panHandlers}
+          style={{ flex: 1, borderRadius: 18, backgroundColor: c.card, borderWidth: 1, borderColor: c.line,
+            alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <Text style={[st.hint, { textAlign: "center" }]} pointerEvents="none">
+            Move with one finger · tap to click · two-finger tap to right-click · two fingers to scroll · tap, then touch again and move to drag
+          </Text>
+        </View>
+        <View style={[st.row, { marginTop: 12, gap: 12 }]}>
+          <Pressable style={{ flex: 1, height: 56, borderRadius: 14, backgroundColor: c.raised, alignItems: "center", justifyContent: "center" }}
+            onPressIn={() => controller.pointerButton("left", true)} onPressOut={() => controller.pointerButton("left", false)}>
+            <Text style={st.name}>Left</Text>
+          </Pressable>
+          <Pressable style={{ flex: 1, height: 56, borderRadius: 14, backgroundColor: c.raised, alignItems: "center", justifyContent: "center" }}
+            onPress={() => controller.pointerClick("right", 1)}>
+            <Text style={st.name}>Right</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function DeviceRow({ c, st, d }: { c: Colors; st: PageProps["st"]; d: DeviceView }) {
   const status = d.state === "on" ? `Connected · ${d.route === "tailscale" ? "Tailscale" : "Wi‑Fi"}`
     : d.state === "connecting" ? "Connecting…" : d.state === "available" ? (d.trusted ? "Nearby" : "Not paired")
@@ -313,6 +432,9 @@ function DeviceRow({ c, st, d }: { c: Colors; st: PageProps["st"]; d: DeviceView
         {d.state === "connecting" ? <ActivityIndicator color={c.accent} /> : null}
       </View>
       <View style={[st.row, { marginTop: 10, gap: 8 }]}>
+        {d.state === "on" && ["mac", "windows", "linux"].includes(d.os) ? (
+          <Button st={st} title="Trackpad" kind="primary" onPress={() => controller.openTrackpad(d.id)} />
+        ) : null}
         {d.state === "on" ? <Button st={st} title="Disconnect" kind="quiet" onPress={() => controller.disconnect(d.id)} /> : null}
         {d.state === "available" || (d.state === "away" && d.trusted) ? (
           <Button st={st} title={d.trusted ? "Connect" : "Pair"} kind="primary" onPress={() => controller.connect(d.id)} />

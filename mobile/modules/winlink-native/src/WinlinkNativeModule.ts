@@ -7,6 +7,7 @@ type Events = {
   onClipboardShare(e: ({ kind: "text"; text: string } | { kind: "image"; png: string }) & { auto?: boolean }): void;
   onNetwork(e: { up: boolean; wifi: boolean }): void;
   onTick(e: Record<string, never>): void;
+  onScreen(e: { on: boolean }): void;
 };
 
 declare class WinlinkNativeModule extends NativeModule<Events> {
@@ -48,6 +49,8 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   openOverlaySettings(): void;
   /** Android, newer builds: tick every 200 ms (onTick), for JS timers while in the background. */
   setTicking(on: boolean): void;
+  /** Android, newer builds: something's under way (sound, a transfer): stay awake with the screen off. */
+  setBusy(on: boolean): void;
   saveToDownloads(path: string, name: string, sub: string): Promise<string>;
   deleteSaved(uri: string): Promise<boolean>;
   openSaved(uri: string, mime: string | null): Promise<void>;

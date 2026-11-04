@@ -652,6 +652,8 @@ export class Node {
         } else if (kind === "info" && Array.isArray(msg.ts_addrs)) {
           const ts = msg.ts_addrs.filter((a: unknown) => typeof a === "string" && a.length < 64).slice(0, 6);
           this.saveTrusted(peer, { tsAddrs: ts });
+        } else if (kind === "pointer" && msg.op === "no" && typeof msg.reason === "string") {
+          this.emit({ kind: "notice", text: `${peer.name}: ${msg.reason.slice(0, 200)}` });
         } else if (kind === "bye") {
           peer.remotePaused = true;
           break;
@@ -737,6 +739,12 @@ export class Node {
   }
 
   // ---- clipboard
+  /** Trackpad: move, click or scroll a computer's pointer (pointer.py on the computer). */
+  sendPointer(peerId: string, msg: Record<string, unknown>) {
+    const peer = this.peers.get(peerId);
+    peer?.control?.send({ type: "pointer", ...msg }).catch(() => undefined);
+  }
+
   sendClip(clip: { kind: "text"; text: string } | { kind: "image"; png: string }, except?: string) {
     const msg = { type: "clip", ...clip };
     for (const p of this.connected()) {

@@ -54,6 +54,7 @@ export interface Snapshot {
   keepAlive: boolean;
   background: { unrestricted: boolean; running: boolean } | null;    // Android, newer builds
   autoClip: AutoClipView | null;                                      // Android, newer builds
+  trackpad: { id: string; name: string; on: boolean } | null;         // the computer the trackpad drives
   tailscale: TailscaleView;
   anywhere: AnywhereView | null;
   notice: { text: string; at: number } | null;
@@ -162,6 +163,89 @@ class Controller {
     }
   }
 
+  // ---- trackpad: this phone moves a computer's pointer (pointer.py on the computer)
+  private trackpadFor: string | null = null;
+  private moveX = 0;
+  private moveY = 0;
+  private scrollX = 0;
+  private scrollY = 0;
+  private padTimer: ReturnType<typeof setTimeout> | null = null;
+
+  openTrackpad(id: string) {
+    this.trackpadFor = id;
+    this.changed();
+  }
+
+  closeTrackpad() {
+    this.flushPad();
+    this.trackpadFor = null;
+    this.changed();
+  }
+
+  /** Finger movement comes many times a frame: add it up and send at most once every 16 ms. */
+  pointerMove(dx: number, dy: number) {
+    this.moveX += dx;
+    this.moveY += dy;
+    this.schedulePad();
+  }
+
+  pointerScroll(dx: number, dy: number) {
+    this.scrollX += dx;
+    this.scrollY += dy;
+    this.schedulePad();
+  }
+
+  pointerButton(b: "left" | "right", down: boolean) {
+    this.flushPad();
+    if (this.trackpadFor) this.node?.sendPointer(this.trackpadFor, { op: "button", b, down });
+  }
+
+  pointerClick(b: "left" | "right", n: 1 | 2) {
+    this.flushPad();
+    if (this.trackpadFor) this.node?.sendPointer(this.trackpadFor, { op: "click", b, n });
+  }
+
+  private schedulePad() {
+    if (!this.padTimer) this.padTimer = setTimeout(() => this.flushPad(), 16);
+  }
+
+  private flushPad() {
+    if (this.padTimer) clearTimeout(this.padTimer);
+    this.padTimer = null;
+    const id = this.trackpadFor;
+    const r = (v: number) => Math.round(v * 10) / 10;
+    if (id && (this.moveX || this.moveY)) this.node?.sendPointer(id, { op: "move", dx: r(this.moveX), dy: r(this.moveY) });
+    if (id && (this.scrollX || this.scrollY)) this.node?.sendPointer(id, { op: "scroll", dx: r(this.scrollX), dy: r(this.scrollY) });
+    this.moveX = this.moveY = this.scrollX = this.scrollY = 0;
+  }
+
+  private busy: boolean | null = null;
+
+  /** Battery: the phone stays awake with the screen off only while sound plays or is shared, or a
+   * file is moving. Otherwise it sleeps like any app and reconnects when the screen comes on. */
+  private syncBusy() {
+    if (RN.OS !== "android" || !this.node) return;
+    const busy = !!this.node.playingFrom || !!this.sender?.running
+      || [...this.node.batches.values()].some((b) => b.state === "active");
+    if (busy === this.busy) return;
+    this.busy = busy;
+    try {
+      Native.setBusy(busy);
+    } catch {
+      /* an older build */
+    }
+  }
+
+  /** The screen came on: reconnect straight away instead of waiting for the next retry. */
+  private onScreenOn() {
+    if (!this.node) return;
+    for (const p of this.node.peers.values()) {
+      if (!p.control) p.retryAt = 0;
+    }
+    this.anywhere?.nudge();
+    this.changed();
+  }
+
   /** Off screen, React Native stops JS timers: a native clock runs them instead (see bgtimers.ts). */
   private setTicking(on: boolean) {
     if (RN.OS !== "android") return;
@@ -220,6 +304,9 @@ class Controller {
     Native.addListener("onClipboardShare", (clip) => this.shareClip(clip));
     Native.addListener("onNetwork", (e) => this.onNetwork(e.up, e.wifi));
     Native.addListener("onTick", () => runDue());
+    Native.addListener("onScreen", (e) => {
+      if (e.on) this.onScreenOn();
+    });
     Native.addListener("onCapture", (e) => {
       if (e.state === "error") this.setNotice(e.error ?? "Couldn't capture the phone's sound");
     });
@@ -483,6 +570,7 @@ class Controller {
     if (this.dirtyTimer) return;
     this.dirtyTimer = setTimeout(() => {
       this.dirtyTimer = null;
+      this.syncBusy();
       this.listeners.forEach((f) => f());
     }, 50);
   }
@@ -494,7 +582,7 @@ class Controller {
       return { ready: false, me: { name: "", os: platform.os }, devices: [], transfers: [], received: [],
         clipboard: { enabled: true, history: [] }, sound: { canShare: false, sharing: false, shareText: "", shareTone: "muted",
           target: null, playingFrom: null, playingInfo: "", latency: "auto", volume: 1 }, keepAlive: true,
-        background: null, autoClip: null, tailscale: this.tailscale, anywhere: null, notice: null };
+        background: null, autoClip: null, trackpad: null, tailscale: this.tailscale, anywhere: null, notice: null };
     }
     const devices: DeviceView[] = [...node.peers.values()].map((p) => ({
       id: p.id,
@@ -538,6 +626,8 @@ class Controller {
       keepAlive: s.keepAlive,
       background: this.background(),
       autoClip: this.autoClip(),
+      trackpad: this.trackpadFor ? { id: this.trackpadFor, name: node.peers.get(this.trackpadFor)?.name ?? "",
+        on: !!node.peers.get(this.trackpadFor)?.control } : null,
       tailscale: this.tailscale,
       anywhere: this.anywhere?.view() ?? null,
       notice: this.notice,

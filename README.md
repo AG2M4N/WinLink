@@ -224,6 +224,13 @@ isn't touched.
   allow WinLink (and its `linkts` helper) through the firewall when asked, or let UDP port 41642 in;
   on the same Wi-Fi, check the router doesn't isolate devices from each other.
 
+### Phone as a trackpad
+On the phone, *Devices → Trackpad* next to a connected computer turns the screen into a touchpad for it:
+move with one finger, tap to click, tap with two fingers to right-click, scroll with two fingers, and
+tap then touch again and move to drag. It uses the computer's *Accept keyboard and mouse from other
+computers* setting, and on a Mac the same Accessibility permission as keyboard sharing. Linux needs X11
+(Wayland doesn't let apps move the pointer).
+
 ### Connect from anywhere
 1. Switch on **Connect from anywhere** on each device (Devices page; on Android, *Away from home*).
 2. Click **Sign in** and sign in to Tailscale in the browser (a free account works), with the **same

@@ -371,6 +371,7 @@ class Node:
         self.lock = threading.RLock()
         self.on_audio = None   # callable(peer, header, chan) on devices that can play sound
         self.on_kvm = None     # callable(peer, chan): Deskflow's connection carried over our link (kvm.py)
+        self.on_pointer = None  # callable(peer, msg): a phone used as a trackpad (pointer.py), on the link's thread
         self.downloads = downloads_dir()
         self.tailscale = "missing"   # the Tailscale app: missing | stopped | on
         # Built-in Tailscale ("Connect from anywhere"):
@@ -1221,6 +1222,8 @@ class Node:
                         self.emit("notice", f"Couldn't get the files from {peer.name}: {error}.")
                 elif kind == "kvm":                 # keyboard and mouse sharing (kvm.py) sets itself up
                     self.emit("kvm_msg", peer, msg)
+                elif kind == "pointer" and self.on_pointer is not None:   # right here: no queue, no delay
+                    self.on_pointer(peer, msg)
                 elif kind == "bye":
                     peer.remote_paused = True
                     break

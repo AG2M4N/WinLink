@@ -15,13 +15,26 @@ import android.os.PowerManager
 import android.util.Log
 
 /** Keeps WinLink running in the background so files, clipboard and sound keep arriving.
- * Its notification has a "Send clipboard" button. */
+ * Its notification has a "Send clipboard" button.
+ *
+ * Battery: the wake and Wi-Fi locks (CPU and Wi-Fi fully awake) are held only while the screen is on,
+ * or while WinLink is busy (sound playing or being shared, a file transferring). With the screen off
+ * and nothing going on, the phone sleeps as usual; computers see it go offline, and it reconnects
+ * as soon as the screen comes back on. */
 class LinkService : Service() {
   companion object {
     const val CHANNEL = "winlink-link"
     const val ID = 4201
     const val ACTION_STOP = "expo.modules.winlinknative.STOP"
     @Volatile var running = false
+    @Volatile var busy = false            // set from JS: sound or a transfer under way
+    @Volatile var instance: LinkService? = null
+
+    /** JS says whether something's under way that must keep going with the screen off. */
+    fun setBusy(on: Boolean) {
+      busy = on
+      instance?.let { s -> android.os.Handler(android.os.Looper.getMainLooper()).post { s.applyLocks() } }
+    }
     fun notification(ctx: Context, text: String): Notification {
       val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
@@ -51,18 +64,41 @@ class LinkService : Service() {
   override fun onCreate() {
     super.onCreate()
     running = true
+    instance = this
+    registerReceiver(screen, android.content.IntentFilter().apply {
+      addAction(Intent.ACTION_SCREEN_ON)
+      addAction(Intent.ACTION_SCREEN_OFF)
+    })
     goForeground("Connected")
     try { ClipWatcher.sync(this) } catch (e: Throwable) {}
   }
 
   override fun onDestroy() {
     running = false
+    if (instance === this) instance = null
+    try { unregisterReceiver(screen) } catch (e: Throwable) {}
     releaseLocks()
     super.onDestroy()
   }
 
   // While connected, keep the CPU and Wi-Fi awake with the screen off: otherwise Android parks the
   // radio and sound stutters, transfers stall and computers can't reach the phone.
+  private val screen = object : android.content.BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+      applyLocks()
+      if (intent.action == Intent.ACTION_SCREEN_ON) {
+        Bridge.send("onScreen", mapOf("on" to true))      // reconnect now, don't wait for a retry
+      }
+    }
+  }
+
+  /** Hold the locks while the screen is on or something's under way; otherwise let the phone sleep. */
+  fun applyLocks() {
+    if (!running) return
+    val on = (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+    if (on || busy) holdLocks() else releaseLocks()
+  }
+
   private var wake: PowerManager.WakeLock? = null
   private var wifiLocks = mutableListOf<WifiManager.WifiLock>()
 
@@ -119,7 +155,7 @@ class LinkService : Service() {
       } else {
         startForeground(ID, n)
       }
-      holdLocks()
+      applyLocks()
     } catch (e: Throwable) {        // not allowed right now (e.g. started from the background): give up quietly
       Log.w("WinLink", "background service: ${e.message}")
       stopSelf()

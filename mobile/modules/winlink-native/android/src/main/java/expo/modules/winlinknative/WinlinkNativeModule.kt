@@ -53,7 +53,7 @@ class WinlinkNativeModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("WinlinkNative")
-    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick")
+    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen")
 
     OnCreate {
       Bridge.module = this@WinlinkNativeModule
@@ -207,6 +207,9 @@ class WinlinkNativeModule : Module() {
       Bridge.pendingClip = null
       c
     }
+
+    // ---- battery: keep the phone awake with the screen off only while this is true (see LinkService)
+    Function("setBusy") { on: Boolean -> LinkService.setBusy(on) }
 
     // ---- a clock for JS timers in the background (React Native stops them there; see src/bgtimers.ts)
     Function("setTicking") { on: Boolean ->

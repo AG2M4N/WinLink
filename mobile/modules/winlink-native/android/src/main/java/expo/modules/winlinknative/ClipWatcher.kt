@@ -91,9 +91,11 @@ object ClipWatcher {
     var wait = 1000L
     while (thread === me) {
       try {
-        // Only lines from now on (-T), only Android's clipboard service, errors and up.
+        // Only lines from now on (-T), only Android's clipboard service, errors and up. Only the system
+        // log (-b system), where Android's own services write: most apps write to the main one, and
+        // logcat would be woken for each of their lines just to throw it away (battery).
         val since = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-        val p = ProcessBuilder("logcat", "-T", since, "$TAG:E", "*:S").redirectErrorStream(true).start()
+        val p = ProcessBuilder("logcat", "-b", "system", "-T", since, "$TAG:E", "*:S").redirectErrorStream(true).start()
         proc = p
         p.inputStream.bufferedReader().use { r ->
           while (thread === me) {

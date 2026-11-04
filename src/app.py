@@ -32,6 +32,7 @@ except ImportError:          # Linux servers: `winlink daemon` runs without a wi
 
 import autostart
 import kvm
+import pointer
 import net
 import sendto
 from cleanup import Cleanup, move_to_trash
@@ -467,6 +468,8 @@ class App:
         self.clip_problem = ""         # Linux: why the clipboard can't be shared (a tool is missing)
         self.kvm = kvm.Sharing(self.node, self.settings, os.path.join(net.config_dir(), "kvm"), self.dirty.set)
         self.node.on_kvm = self.kvm.tunnel_in
+        self.pointer = pointer.Pointer(lambda: self.kvm.conf.get("allow", True))
+        self.node.on_pointer = self.pointer.handle
         self.send_fix = None           # "privacy" when macOS needs the person to allow capturing sound
 
     # ------------------------------------------------------------ run
