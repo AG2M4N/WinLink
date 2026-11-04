@@ -33,7 +33,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: v
         name: WinLink's version (src/net.py)
         run: |
@@ -56,7 +56,7 @@ jobs:
           - {name: AppleSilicon, arch: arm64, runner: macos-15, qt: 6.11.3, min_macos: "13"}
           - {name: Intel, arch: x86_64, runner: macos-15-intel, qt: 6.9.3, min_macos: "13"}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: {repository: deskflow/deskflow, ref: "${{ env.DESKFLOW_TAG }}", path: deskflow}
       - run: brew install --quiet openssl ninja
       - uses: jurplel/install-qt-action@v4
@@ -87,7 +87,7 @@ jobs:
           printf 'Deskflow %s, GPL-2.0 (Deskflow-LICENSE.txt). Source code:\nhttps://github.com/deskflow/deskflow/tree/%s\n' \
             "$DESKFLOW_TAG" "$DESKFLOW_TAG" > out/Deskflow-SOURCE.txt
           tar -czf deskflow-mac.tgz -C out .        # a tarball keeps the app's symlinks and permissions
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: {name: "deskflow-mac-${{ matrix.arch }}", path: deskflow-mac.tgz, retention-days: 7}
 
   deskflow-windows:
@@ -95,7 +95,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: {repository: deskflow/deskflow, ref: "${{ env.DESKFLOW_TAG }}", path: deskflow}
       - uses: TheMrMilchmann/setup-msvc-dev@v4
         with: {arch: amd64, spectre: true}
@@ -133,7 +133,7 @@ jobs:
           & out\deskflow-core.exe --version
           Copy-Item deskflow\LICENSE out\Deskflow-LICENSE.txt
           "Deskflow $env:DESKFLOW_TAG, GPL-2.0 (Deskflow-LICENSE.txt). Source code:`nhttps://github.com/deskflow/deskflow/tree/$env:DESKFLOW_TAG" | Set-Content out\Deskflow-SOURCE.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: {name: deskflow-windows-x64, path: out, retention-days: 7}
 
   # ---------------------------------------------------------------- WinLink
@@ -143,12 +143,12 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "${{ env.PYTHON_VERSION }}"}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with: {go-version-file: helper/go.mod, cache-dependency-path: helper/go.sum}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with: {name: deskflow-windows-x64, path: deskflow-engine}
       - name: Tailscale helper
         shell: bash
@@ -180,7 +180,7 @@ jobs:
             else { choco install innosetup -y --no-progress; $env:Path += ";${env:ProgramFiles(x86)}\Inno Setup 6" }
           }
           iscc /DAppVersion=${{ needs.version.outputs.version }} packaging\windows\winlink.iss
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: {name: winlink-windows, path: release/WinLink-Setup.exe, retention-days: 14}
 
   mac:
@@ -195,12 +195,12 @@ jobs:
           - {name: AppleSilicon, arch: arm64, runner: macos-15}
           - {name: Intel, arch: x86_64, runner: macos-15-intel}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "${{ env.PYTHON_VERSION }}"}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with: {go-version-file: helper/go.mod, cache-dependency-path: helper/go.sum}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with: {name: "deskflow-mac-${{ matrix.arch }}"}
       - name: Build WinLink.app
         run: |
@@ -216,7 +216,7 @@ jobs:
           codesign --verify --deep WinLink.app
       - name: Disk image
         run: sh packaging/mac/make_dmg.sh WinLink.app "release/WinLink-mac-${{ matrix.name }}.dmg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: {name: "winlink-mac-${{ matrix.name }}", path: release/*.dmg, retention-days: 14}
 
   linux:
@@ -234,10 +234,10 @@ jobs:
       WINLINK_VERSION: ${{ needs.version.outputs.version }}
       PKG_ARCH: ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with: {go-version-file: helper/go.mod, cache-dependency-path: helper/go.sum}
-      - uses: actions/setup-python@v5           # only to fetch the vendored libraries (the system's pip refuses)
+      - uses: actions/setup-python@v6           # only to fetch the vendored libraries (the system's pip refuses)
         with: {python-version: "${{ env.PYTHON_VERSION }}"}
       - name: Stage the files
         run: |
@@ -266,7 +266,7 @@ jobs:
           # no screen here: pystray (tray) needs one, so it's left out of this import check
           /usr/bin/python3 -c "import sys; sys.path[:0] = ['/usr/lib/winlink/src', '/usr/lib/winlink/vendor']; import webview, sounddevice, zeroconf, app, kvm, net"
           /usr/bin/python3 packaging/check_opus.py /usr/lib/winlink/src
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: {name: "winlink-linux-${{ matrix.arch }}", path: "release/*", retention-days: 14}
 
   android:
@@ -277,12 +277,12 @@ jobs:
     env:
       WINLINK_VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: "20", cache: npm, cache-dependency-path: mobile/package-lock.json}
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: {node-version: "24", cache: npm, cache-dependency-path: mobile/package-lock.json}
+      - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: "17"}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with: {go-version-file: helper/go.mod, cache-dependency-path: helper/go.sum}
       - name: Tailscale helper for phones
         run: sh helper/build_android.sh
@@ -321,7 +321,7 @@ jobs:
             --key-pass env:KEYSTORE_PASSWORD --out release/WinLink.apk "$apk"
           "$signer" verify --print-certs release/WinLink.apk | head -3
           rm -f "$RUNNER_TEMP/winlink.jks"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: {name: winlink-android, path: release/WinLink.apk, retention-days: 14, if-no-files-found: ignore}
 
   # ---------------------------------------------------------------- the release (tags only)
@@ -333,8 +333,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with: {pattern: "winlink-*", path: release, merge-multiple: true}
       - name: Draft it
         env:

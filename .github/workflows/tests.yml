@@ -13,8 +13,8 @@ jobs:
     name: Windows clipboard
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
       - run: python mobile/tests/harness/win_clipboard.py
 
@@ -22,8 +22,8 @@ jobs:
     name: Copied files between computers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
       - run: pip install cryptography zeroconf
       - run: python mobile/tests/harness/desktop_clipfiles.py "$RUNNER_TEMP/clip"
