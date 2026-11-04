@@ -7,6 +7,7 @@ import Native from "../modules/winlink-native";
 import { Anywhere, AnywhereView } from "./anywhere";
 import { Batch, Node, NodeEvent, Peer, PORT, SoundSender } from "./core/node";
 import { setOnScreen } from "./core/wire";
+import { runDue } from "./bgtimers";
 import { AppSettings, ReceivedFile, fileSource, loadSettings, logLines, platform, saveSettings, soundStats } from "./platform";
 
 export interface DeviceView {
@@ -161,6 +162,16 @@ class Controller {
     }
   }
 
+  /** Off screen, React Native stops JS timers: a native clock runs them instead (see bgtimers.ts). */
+  private setTicking(on: boolean) {
+    if (RN.OS !== "android") return;
+    try {
+      Native.setTicking(on);
+    } catch {
+      /* an older build */
+    }
+  }
+
   allowBackground() {
     try {
       Native.allowBackground();
@@ -204,9 +215,11 @@ class Controller {
     this.checkTailscale();
     setInterval(() => this.checkTailscale(), 4000);
     setOnScreen(AppState.currentState === "active");
+    this.setTicking(AppState.currentState !== "active");
     AppState.addEventListener("change", (s) => this.onAppState(s));
     Native.addListener("onClipboardShare", (clip) => this.shareClip(clip));
     Native.addListener("onNetwork", (e) => this.onNetwork(e.up, e.wifi));
+    Native.addListener("onTick", () => runDue());
     Native.addListener("onCapture", (e) => {
       if (e.state === "error") this.setNotice(e.error ?? "Couldn't capture the phone's sound");
     });
@@ -221,6 +234,7 @@ class Controller {
 
   private onAppState(s: string) {
     setOnScreen(s === "active");
+    this.setTicking(s !== "active");
     if (!this.node) return;
     if (s === "active") {
       this.node.start(PORT);

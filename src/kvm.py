@@ -500,6 +500,7 @@ class Sharing:
         self.applied = None
         self.lock = threading.RLock()
         self.retries = 0
+        self.reswaps = []            # when certificates were last swapped again after a mismatch
         threading.Thread(target=self._measure, daemon=True, name="kvm delay").start()
 
     # ---- settings
@@ -689,6 +690,10 @@ class Sharing:
                 self._send(peer, {"op": "pong", "t": msg.get("t")})
             elif op == "pong" and isinstance(msg.get("t"), (int, float)):
                 self.rtt[peer.id] = max(0.0, (time.monotonic() - msg["t"]) * 1000)
+            elif op == "rejoin" and peer.id in self.clients and self.conf.get("share"):
+                # the computer following us got a certificate it didn't expect: swap them again
+                self.clients[peer.id].update(fp="", asked=False)
+                self.refresh()
             elif op == "no" and peer.id in self.clients:
                 self.clients[peer.id].update(state="no", text=str(msg.get("reason", ""))[:160])
         self.on_change()
@@ -929,8 +934,32 @@ class Sharing:
             elif kind == "port":
                 self.problem = f"Port {PORT} is in use (is another Deskflow running?)."
             elif kind == "untrusted":
-                self.problem = "The other computer's certificate didn't match. Turn sharing off and on to swap them again."
+                self._reswap()
         self.on_change()
+
+    RESWAP_LIMIT, RESWAP_WINDOW, RESWAP_GAP = 3, 300, 15
+
+    def _reswap(self):
+        """Deskflow refused the other side's certificate: the fingerprints we swapped are out of date
+        (a computer made a new certificate, e.g. after a reinstall). Swap them again by ourselves, as
+        turning sharing off and on does; only after a few failed tries ask the person. Under self.lock."""
+        now = time.time()
+        self.reswaps = [t for t in self.reswaps if now - t < self.RESWAP_WINDOW]
+        if self.reswaps and now - self.reswaps[-1] < self.RESWAP_GAP:
+            return                                   # one mismatch is logged several times: one swap
+        if len(self.reswaps) >= self.RESWAP_LIMIT:
+            self.problem = "The other computer's certificate didn't match. Turn sharing off and on to swap them again."
+            return
+        self.reswaps.append(now)
+        log.info("keyboard and mouse: certificate didn't match, swapping them again")
+        self.problem = ""
+        if self.role == "server":
+            for c in self.clients.values():
+                c.update(fp="", asked=False)
+            self.applied = None
+            self.refresh()
+        elif self.role == "client" and self.server_peer is not None:
+            self._send(self.server_peer, {"op": "rejoin"})
 
     def _restart(self):
         with self.lock:

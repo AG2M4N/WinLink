@@ -1,5 +1,9 @@
 // The protocol code uses Web Crypto's getRandomValues (for keys and nonces).
 import * as ExpoCrypto from "expo-crypto";
+import { installBackgroundTimers } from "./bgtimers";
+
+// Timers that keep running in the background (see bgtimers.ts). First, before anything sets one.
+installBackgroundTimers();
 
 const g = globalThis as any;
 if (!g.crypto?.getRandomValues) {

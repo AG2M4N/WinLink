@@ -28,6 +28,7 @@ import java.net.NetworkInterface
 
 private const val CAPTURE_REQUEST = 7301
 private const val TAILSCALE = "com.tailscale.ipn"
+private const val TICK_MS = 200L
 
 class WinlinkNativeModule : Module() {
   private val player = SoundPlayer()
@@ -35,12 +36,24 @@ class WinlinkNativeModule : Module() {
   private var multicast: WifiManager.MulticastLock? = null
   private var netCallback: ConnectivityManager.NetworkCallback? = null
 
+  // Main thread: it keeps running with WinLink in the background (the service's wake lock keeps the
+  // CPU up while connected), unlike React Native's own timers, which wait for the screen.
+  private val tickHandler = android.os.Handler(android.os.Looper.getMainLooper())
+  @Volatile private var ticking = false
+  private val tick: Runnable = object : Runnable {
+    override fun run() {
+      if (!ticking) return
+      try { sendEvent("onTick", mapOf<String, Any?>()) } catch (e: Throwable) {}
+      tickHandler.postDelayed(this, TICK_MS)
+    }
+  }
+
   private val context: Context
     get() = appContext.reactContext ?: throw CodedException("NO_CONTEXT", "WinLink isn't ready yet", null)
 
   override fun definition() = ModuleDefinition {
     Name("WinlinkNative")
-    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork")
+    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick")
 
     OnCreate {
       Bridge.module = this@WinlinkNativeModule
@@ -49,6 +62,8 @@ class WinlinkNativeModule : Module() {
     }
     OnDestroy {
       if (Bridge.module === this@WinlinkNativeModule) Bridge.module = null
+      ticking = false
+      tickHandler.removeCallbacksAndMessages(null)
       player.stop()
       netCallback?.let { cb ->
         try { (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(cb) } catch (e: Throwable) {}
@@ -191,6 +206,19 @@ class WinlinkNativeModule : Module() {
       val c = Bridge.pendingClip
       Bridge.pendingClip = null
       c
+    }
+
+    // ---- a clock for JS timers in the background (React Native stops them there; see src/bgtimers.ts)
+    Function("setTicking") { on: Boolean ->
+      tickHandler.post {
+        if (on && !ticking) {
+          ticking = true
+          tickHandler.postDelayed(tick, TICK_MS)
+        } else if (!on) {
+          ticking = false
+          tickHandler.removeCallbacks(tick)
+        }
+      }
     }
 
     // ---- sending copies automatically (see ClipWatcher)
