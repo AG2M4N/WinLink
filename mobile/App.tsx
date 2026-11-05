@@ -594,7 +594,10 @@ function AutoClipCard({ c, st, a }: { c: PageProps["c"]; st: PageProps["st"]; a:
       ) : null}
       {a.on && ready ? (
         <Text style={[st.sub, { marginTop: 10, color: a.running ? c.text2 : c.warn }]}>
-          {a.running ? "On. Copies go to your connected computers as you make them." : "Waiting to start: open WinLink again."}
+          {a.running ? "On. Copies go to your connected computers as you make them."
+            : a.refused ? "Android didn't allow WinLink to read its log. Turn the switch off and on, then tap Allow when Android asks."
+            : a.paused ? "Starting… If Android asks whether WinLink may access the device logs, tap Allow."
+            : "Waiting to start: open WinLink again."}
         </Text>
       ) : null}
       {a.on ? (

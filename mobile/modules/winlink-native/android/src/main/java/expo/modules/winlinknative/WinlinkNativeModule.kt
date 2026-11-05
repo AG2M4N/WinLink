@@ -53,11 +53,15 @@ class WinlinkNativeModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("WinlinkNative")
-    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen")
+    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen", "onAutoClip")
 
     OnCreate {
       Bridge.module = this@WinlinkNativeModule
       watchNetwork()
+      try { ClipWatcher.sync(context) } catch (e: Throwable) {}
+    }
+    // Opened again: a paused clipboard watcher can start now (Android only allows it with WinLink in front).
+    OnActivityEntersForeground {
       try { ClipWatcher.sync(context) } catch (e: Throwable) {}
     }
     OnDestroy {
@@ -229,7 +233,8 @@ class WinlinkNativeModule : Module() {
       val ctx = context
       ClipWatcher.sync(ctx)               // picks up permissions given since (e.g. over ADB)
       mapOf("on" to ClipWatcher.enabled(ctx), "logs" to ClipWatcher.hasLogs(ctx), "overlay" to ClipWatcher.hasOverlay(ctx),
-        "running" to ClipWatcher.running, "package" to ctx.packageName)
+        "running" to ClipWatcher.running, "paused" to ClipWatcher.paused, "refused" to ClipWatcher.refused,
+        "package" to ctx.packageName)
     }
     Function("setAutoClip") { on: Boolean -> ClipWatcher.setEnabled(context, on) }
     Function("markOwnClip") { ClipWatcher.markOwn() }

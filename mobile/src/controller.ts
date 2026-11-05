@@ -66,6 +66,8 @@ export interface AutoClipView {
   logs: boolean;        // READ_LOGS, given once over ADB
   overlay: boolean;     // display over other apps, given in Settings
   running: boolean;
+  paused: boolean;      // Android ended the log reader: waiting for WinLink to be opened
+  refused: boolean;     // Android's "read the device logs?" prompt wasn't allowed
   pkg: string;
 }
 
@@ -128,7 +130,8 @@ class Controller {
     this.autoClipAt = Date.now();
     try {
       const a = Native.autoClipStatus();
-      this.autoClipCache = { on: a.on, logs: a.logs, overlay: a.overlay, running: a.running, pkg: a.package };
+      this.autoClipCache = { on: a.on, logs: a.logs, overlay: a.overlay, running: a.running,
+        paused: !!a.paused, refused: !!a.refused, pkg: a.package };
     } catch {
       this.autoClipCache = null;          // an older build
     }
@@ -304,6 +307,10 @@ class Controller {
     Native.addListener("onClipboardShare", (clip) => this.shareClip(clip));
     Native.addListener("onNetwork", (e) => this.onNetwork(e.up, e.wifi));
     Native.addListener("onTick", () => runDue());
+    Native.addListener("onAutoClip", () => {
+      this.autoClipAt = 0;
+      this.changed();
+    });
     Native.addListener("onScreen", (e) => {
       if (e.on) this.onScreenOn();
     });

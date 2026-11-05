@@ -8,6 +8,7 @@ type Events = {
   onNetwork(e: { up: boolean; wifi: boolean }): void;
   onTick(e: Record<string, never>): void;
   onScreen(e: { on: boolean }): void;
+  onAutoClip(e: { running: boolean }): void;
 };
 
 declare class WinlinkNativeModule extends NativeModule<Events> {
@@ -42,7 +43,7 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   tsWipe(): void;
   takePendingClip(): { kind: "text"; text: string } | { kind: "image"; png: string } | null;
   /** Android, newer builds: "Send copies automatically" and the two permissions it needs. */
-  autoClipStatus(): { on: boolean; logs: boolean; overlay: boolean; running: boolean; package: string };
+  autoClipStatus(): { on: boolean; logs: boolean; overlay: boolean; running: boolean; paused?: boolean; refused?: boolean; package: string };
   setAutoClip(on: boolean): void;
   /** WinLink is about to set the clipboard itself (from a computer): don't send it back. */
   markOwnClip(): void;
