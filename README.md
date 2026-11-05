@@ -164,6 +164,10 @@ Ready-made downloads are on the **[Releases](../../releases) page**.
 
 **Updating:** install the new version over the old one. Your pairings and settings stay.
 
+**Linux:** if apt ends with *"N: Download is performed unsandboxed as root…"*, that's only a note: WinLink is
+installed. apt says it whenever a package is installed from a private folder like Downloads. After
+installing, log out and back in once so the phone trackpad can work.
+
 ### Mac
 If macOS asks to let WinLink find devices on your local network, click **Allow**. To share the Mac's
 sound, macOS asks once for **Screen & System Audio Recording**; WinLink shows a button that opens the

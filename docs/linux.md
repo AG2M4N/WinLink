@@ -29,7 +29,10 @@ sudo dnf install ./winlink-*.x86_64.rpm     # Fedora (aarch64.rpm on ARM)
 
 The package manager installs what WinLink needs (Python, GTK and WebKitGTK for the window, PortAudio,
 `parec`, ...). It puts WinLink in `/usr/lib/winlink`, the `winlink` command in `/usr/bin` and WinLink in
-your apps menu. Start at login is in WinLink's Settings (without a desktop: `winlink service install`); the firewall is
+your apps menu. If apt ends with *"N: Download is performed unsandboxed as root… Permission denied"*,
+ignore it: that's only a note, WinLink is installed (apt says it for any package installed from a private
+folder such as Downloads; installing from `/tmp` avoids it). Log out and back in once after installing,
+so the phone trackpad can use its virtual mouse. Start at login is in WinLink's Settings (without a desktop: `winlink service install`); the firewall is
 [below](#firewall).
 
 **Other distributions** (Arch, Manjaro, openSUSE...), or to install for your user only: clone this repo
