@@ -1,10 +1,15 @@
-**Automatic copying on Android keeps working, and the phone trackpad now works on Linux with Wayland.**
+**A much more reliable Android app.**
 
 **Fixed**
-- **Android: automatic copying no longer stops after a while.** Before, after an hour or so it could go quiet with no sign, and only turning the switch off and on brought it back. Now, if Android stops it, a notification says so, and simply opening WinLink starts it again. If Android asks *"Allow WinLink to access all device logs?"*, tap **Allow**.
-- **Linux: the phone trackpad works on Wayland** (the default on Ubuntu, Fedora and most current desktops), not only on X11. After installing, log out and back in once. `winlink --check` now shows whether the trackpad and compressed sound work.
+- **The Android app no longer crashes after a few hours.** Every connection left a little behind inside the app, and with *Connect from anywhere* on (which checks in every few seconds) that added up until Android closed WinLink. This also paused hands-free copying from the phone.
+- **Hands-free copying recovers by itself.** If Android pauses it, a notification says so, and opening WinLink starts it again. If Android asks *"Allow WinLink to access all device logs?"*, tap **Allow**.
+- **Linux: the phone trackpad works on Wayland** (the default on Ubuntu and Fedora), not only X11. Log out and back in once after installing.
 
-Everything from [2026.11.9](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.9) is included: the phone trackpad, hands-free copying from Android, keyboard and mouse over admin windows on Windows, pictures both ways with Android, and smoother sound away from home.
+**Also**
+- A shorter README, with every feature in a section you can open.
+- Linux: apt's *"Download is performed unsandboxed as root"* note is explained (it's harmless).
+
+Everything from [2026.11.9](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.9) is included: the phone trackpad, hands-free copying from Android, keyboard and mouse over admin windows on Windows, pictures both ways with the Android app, and smoother sound away from home.
 
 **Downloads**
 | System | File | How |
