@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["src/**", "mobile/tests/harness/**", ".github/workflows/tests.yml"]
+    paths: ["src/**", "mobile/tests/harness/**", "mobile/vendor/**", ".github/workflows/tests.yml"]
 
 jobs:
   windows-clipboard:
@@ -36,3 +36,14 @@ jobs:
       - run: sudo modprobe uinput || sudo apt-get install -y "linux-modules-extra-$(uname -r)" && sudo modprobe uinput
       - run: sudo python3 mobile/tests/harness/linux_trackpad.py
       - run: python3 -c "import sys; sys.path.insert(0, 'src'); import check_linux, pointer"
+
+  phone-socket-threads:
+    name: Phone app sockets don't leak threads
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: "17"}
+      - run: |
+          javac -d out mobile/vendor/react-native-tcp-socket/android/src/main/java/com/asterinet/react/tcpsocket/Threads.java mobile/tests/harness/TcpThreadsTest.java
+          java -cp out com.asterinet.react.tcpsocket.TcpThreadsTest

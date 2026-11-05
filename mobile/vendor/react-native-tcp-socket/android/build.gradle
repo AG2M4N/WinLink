@@ -1,0 +1,22 @@
+apply plugin: 'com.android.library'
+
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+    compileSdkVersion safeExtGet('compileSdkVersion', 29)
+
+    defaultConfig {
+        minSdkVersion safeExtGet('minSdkVersion', 21)
+        targetSdkVersion safeExtGet('targetSdkVersion', 29)
+    }
+}
+
+dependencies {
+    //noinspection GradleDynamicVersion
+    implementation 'com.facebook.react:react-native:+'  // From node_modules
+    // Bouncy Castle dependencies
+    implementation 'org.bouncycastle:bcprov-jdk15to18:1.78.1'
+    implementation 'org.bouncycastle:bcpkix-jdk15to18:1.78.1'
+}
