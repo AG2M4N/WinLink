@@ -73,6 +73,26 @@ def check():
     else:
         row(BAD, "Sharing sound", "parec missing. Install pulseaudio-utils (Debian, Ubuntu, Fedora) or libpulse (Arch)")
 
+    # sound over the internet
+    try:
+        import opus
+        row(OK if opus.available() else WARN, "Sound over the internet",
+            "Opus (compressed, keeps up on slow connections)" if opus.available()
+            else "libopus missing: sound away from home is sent uncompressed. Install libopus0 / opus")
+    except Exception as e:  # noqa: BLE001
+        row(WARN, "Sound over the internet", str(e))
+
+    # phone trackpad
+    try:
+        import pointer
+        b = pointer._linux()
+        kind = "virtual mouse (uinput: Wayland and X11)" if isinstance(b, pointer._Uinput) else "XTest (X11 only)"
+        if hasattr(b, "close"):
+            b.close()
+        row(OK, "Phone trackpad", kind)
+    except Exception as e:  # noqa: BLE001
+        row(WARN, "Phone trackpad", f"{e}. The packages set this up; from source, run install_linux.sh again")
+
     # network
     try:
         import zeroconf  # noqa: F401

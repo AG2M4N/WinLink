@@ -27,3 +27,12 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install cryptography zeroconf
       - run: python mobile/tests/harness/desktop_clipfiles.py "$RUNNER_TEMP/clip"
+
+  linux-trackpad:
+    name: Phone trackpad on Linux (virtual mouse)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo modprobe uinput || sudo apt-get install -y "linux-modules-extra-$(uname -r)" && sudo modprobe uinput
+      - run: sudo python3 mobile/tests/harness/linux_trackpad.py
+      - run: python3 -c "import sys; sys.path.insert(0, 'src'); import check_linux, pointer"

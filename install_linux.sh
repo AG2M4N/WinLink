@@ -43,20 +43,20 @@ if command -v apt-get >/dev/null 2>&1; then
   WEBKIT=gir1.2-webkit2-4.1
   apt-cache show "$WEBKIT" >/dev/null 2>&1 || WEBKIT=gir1.2-webkit2-4.0
   PKGS="python3 python3-venv python3-pip python3-gi python3-gi-cairo gir1.2-gtk-3.0 $WEBKIT libportaudio2 \
-pulseaudio-utils xclip wl-clipboard libsecret-tools xdg-utils libnotify-bin libxfixes3"
+pulseaudio-utils xclip wl-clipboard libsecret-tools xdg-utils libnotify-bin libxfixes3 libxtst6 libopus0"
   apt-cache show gir1.2-ayatanaappindicator3-0.1 >/dev/null 2>&1 && PKGS="$PKGS gir1.2-ayatanaappindicator3-0.1"
   INSTALL="sudo apt-get install -y"
 elif command -v dnf >/dev/null 2>&1; then
   PKGS="python3 python3-gobject gtk3 webkit2gtk4.1 portaudio pulseaudio-utils xclip wl-clipboard libsecret \
-xdg-utils libnotify libXfixes libayatana-appindicator-gtk3"
+xdg-utils libnotify libXfixes libXtst opus libayatana-appindicator-gtk3"
   INSTALL="sudo dnf install -y"
 elif command -v pacman >/dev/null 2>&1; then
   PKGS="python python-gobject gtk3 webkit2gtk-4.1 portaudio libpulse xclip wl-clipboard libsecret xdg-utils \
-libnotify libxfixes libayatana-appindicator"
+libnotify libxfixes libxtst opus libayatana-appindicator"
   INSTALL="sudo pacman -S --needed --noconfirm"
 elif command -v zypper >/dev/null 2>&1; then
   PKGS="python3 python3-gobject python3-gobject-Gdk typelib-1_0-Gtk-3_0 typelib-1_0-WebKit2-4_1 portaudio \
-pulseaudio-utils xclip wl-clipboard libsecret-tools xdg-utils libnotify-tools libXfixes3 \
+pulseaudio-utils xclip wl-clipboard libsecret-tools xdg-utils libnotify-tools libXfixes3 libXtst6 libopus0 \
 typelib-1_0-AyatanaAppIndicator3-0_1"
   INSTALL="sudo zypper install -y"
 else
@@ -64,7 +64,7 @@ else
   INSTALL=""
   echo "Couldn't tell which package manager this is. Install these yourself, then run this again:"
   echo "  Python 3.10+ with venv, PyGObject, GTK 3, WebKitGTK (webkit2 4.1 or 4.0), PortAudio,"
-  echo "  parec (PulseAudio utils), xclip, wl-clipboard, secret-tool, xdg-utils, libXfixes."
+  echo "  parec (PulseAudio utils), xclip, wl-clipboard, secret-tool, xdg-utils, libXfixes, libXtst, libopus."
 fi
 if [ -n "$INSTALL" ]; then
   echo "WinLink needs: $PKGS"
@@ -133,6 +133,19 @@ if ask "Start WinLink when you log in (in the tray)?"; then
   printf '%s\nX-GNOME-Autostart-enabled=true\n' "$DESKTOP" | sed "s|^Exec=.*|Exec=$BIN/winlink --hidden|" > "$AUTOSTART"
 else
   rm -f "$AUTOSTART"
+fi
+
+# ---------------------------------------------------------------- phone trackpad
+# The phone's trackpad moves the pointer through a virtual mouse (/dev/uinput), which also works on
+# Wayland. It needs a rule giving the person at the computer access to it (as Steam's controllers do).
+UDEV_RULE=/etc/udev/rules.d/70-winlink-uinput.rules
+if [ ! -e "$UDEV_RULE" ] && [ ! -e /usr/lib/udev/rules.d/70-winlink-uinput.rules ] && command -v udevadm >/dev/null 2>&1; then
+  if ask "Let your phone work as a trackpad for this computer (adds a small system rule, needs sudo)?"; then
+    sudo cp "$HERE/packaging/linux/70-winlink-uinput.rules" "$UDEV_RULE" &&
+      sudo cp "$HERE/packaging/linux/winlink-uinput.conf" /etc/modules-load.d/winlink-uinput.conf &&
+      { sudo modprobe uinput || true; sudo udevadm control --reload-rules; sudo udevadm trigger --name-match=uinput || true; } &&
+      echo "Done. If the trackpad doesn't work straight away, log out and back in once."
+  fi
 fi
 
 # ---------------------------------------------------------------- firewall

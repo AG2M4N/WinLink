@@ -410,8 +410,8 @@ rest of the screen is now a touchpad for that computer:
 
 **On the computer**, this uses the same switch as keyboard sharing: *Devices → Keyboard and mouse →
 Let other computers control this one* (on by default). On a **Mac**, allow WinLink under **System Settings
-→ Privacy & Security → Accessibility**. On **Linux**, it works on X11 desktops (Wayland doesn't allow
-apps to move the pointer). If something stops it, the phone tells you why.
+→ Privacy & Security → Accessibility**. On **Linux**, it works on both Wayland and X11 desktops (the
+first time, log out and back in once after installing). If something stops it, the phone tells you why.
 
 </td>
   </tr>

@@ -94,6 +94,8 @@ applies; Linux specifics:
 | **Trash** | Auto-clean and *Delete* move files to the desktop's Trash (`~/.local/share/Trash`). |
 | **Built-in Tailscale** | Its key is kept in your keyring through `secret-tool`, or in a private file if there's no keyring. |
 | **Keyboard and mouse** | Install Deskflow 1.27 or newer from your distribution or its [releases](https://github.com/deskflow/deskflow/releases/latest), which has packages for current Debian, Ubuntu, Fedora, openSUSE and Arch (`deskflow-core` must be on the `PATH`; the Flatpak isn't used). On Mac and Windows it's built into WinLink, but its Linux engine needs libei 1.3+, which only current distributions have, so it's installed separately here. X11 works fully; on Wayland the desktop asks once to allow remote input. |
+| **Phone trackpad** | The phone moves the pointer through a virtual mouse, so it works on Wayland and X11 alike. The packages add a small system rule that lets the person sitting at the computer use it (the same kind Steam adds for game controllers); log out and back in once after installing. From source, `install_linux.sh` offers to add it. Without it, X11 desktops still work. `winlink --check` shows which is used. |
+| **Sound over the internet** | Compressed with the system's libopus (installed with the packages) so it keeps up on slow connections; at home it stays lossless. |
 | **Awake** | While sound plays or a transfer runs, WinLink holds a `systemd-inhibit` lock so the PC doesn't suspend. |
 
 ## Without a desktop

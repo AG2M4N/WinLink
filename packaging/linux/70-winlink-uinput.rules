@@ -1,0 +1,4 @@
+# WinLink's phone trackpad moves the pointer through a virtual mouse (/dev/uinput), which also works on
+# Wayland. Give the person sitting at the computer (the active local session, "uaccess") access to it,
+# as Steam does for game controllers.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

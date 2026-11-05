@@ -10,12 +10,15 @@ touchpad). The phone sends small messages on the control link (already encrypted
 
 Only while "Accept keyboard and mouse from other computers" is on (Settings). The pointer is moved
 with the system's own input functions: user32 on Windows, CoreGraphics on a Mac (needs WinLink under
-Privacy & Security > Accessibility, as keyboard sharing does), XTest on Linux with X11 (not Wayland).
+Privacy & Security > Accessibility, as keyboard sharing does). On Linux: a virtual mouse made with
+uinput, which works on Wayland and X11 alike (the packages give the person at the computer access to
+/dev/uinput, as Steam does for game controllers), or XTest on X11 without it.
 """
 
 import ctypes
 import ctypes.util
 import logging
+import struct
 import math
 import os
 import sys
@@ -181,10 +184,120 @@ class _Mac:
                 self.cf.CFRelease(e)
 
 
+class _Uinput:
+    """Linux: a virtual mouse ("WinLink trackpad") made through /dev/uinput. The desktop sees an
+    ordinary mouse, so it works on Wayland (which lets no app move the pointer) as well as X11."""
+    PATH = "/dev/uinput"
+    EV_SYN, EV_KEY, EV_REL = 0, 1, 2
+    REL_X, REL_Y, REL_HWHEEL, REL_WHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES = 0, 1, 6, 8, 11, 12
+    BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
+    UI_SET_EVBIT, UI_SET_KEYBIT, UI_SET_RELBIT = 0x40045564, 0x40045565, 0x40045566
+    UI_DEV_SETUP, UI_DEV_CREATE, UI_DEV_DESTROY = 0x405C5503, 0x5501, 0x5502
+    HI_RES = 4            # 1/120ths of a wheel notch per phone point (30 points = one notch, as on X11)
+
+    def __init__(self):
+        import fcntl
+        try:
+            self.fd = os.open(self.PATH, os.O_WRONLY | os.O_NONBLOCK)
+        except FileNotFoundError:
+            raise OSError("the uinput module isn't loaded (sudo modprobe uinput)") from None
+        except PermissionError:
+            raise OSError("WinLink can't use /dev/uinput yet: log out and back in once after installing "
+                          "WinLink, or see 'winlink --check'") from None
+        try:
+            io = fcntl.ioctl
+            io(self.fd, self.UI_SET_EVBIT, self.EV_KEY)
+            for b in (self.BTN_LEFT, self.BTN_RIGHT, self.BTN_MIDDLE):
+                io(self.fd, self.UI_SET_KEYBIT, b)
+            io(self.fd, self.UI_SET_EVBIT, self.EV_REL)
+            for r in (self.REL_X, self.REL_Y, self.REL_WHEEL, self.REL_HWHEEL,
+                      self.REL_WHEEL_HI_RES, self.REL_HWHEEL_HI_RES):
+                io(self.fd, self.UI_SET_RELBIT, r)
+            # struct uinput_setup: input_id (bus, vendor, product, version), name[80], ff_effects_max
+            io(self.fd, self.UI_DEV_SETUP, struct.pack("<4H80sI", 0x03, 0x1209, 0x5701, 1, b"WinLink trackpad", 0))
+            io(self.fd, self.UI_DEV_CREATE)
+        except OSError:
+            os.close(self.fd)
+            raise
+        self.rx = self.ry = 0.0
+        self.sx = self.sy = 0.0          # scroll, in 1/120 notches, not sent yet
+        self.wx = self.wy = 0            # hi-res scroll sent since the last whole notch
+
+    def ok(self):
+        return True
+
+    def _emit(self, events):
+        data = b"".join(struct.pack("@llHHi", 0, 0, t, c, v) for t, c, v in events)
+        data += struct.pack("@llHHi", 0, 0, self.EV_SYN, 0, 0)
+        try:
+            os.write(self.fd, data)
+        except BlockingIOError:
+            pass
+
+    def move(self, dx, dy):
+        self.rx += dx
+        self.ry += dy
+        ix, iy = int(self.rx), int(self.ry)
+        self.rx -= ix
+        self.ry -= iy
+        ev = []
+        if ix:
+            ev.append((self.EV_REL, self.REL_X, ix))
+        if iy:
+            ev.append((self.EV_REL, self.REL_Y, iy))
+        if ev:
+            self._emit(ev)
+
+    def button(self, b, down):
+        self._emit([(self.EV_KEY, self.BTN_LEFT if b == "left" else self.BTN_RIGHT, 1 if down else 0)])
+
+    def scroll(self, dx, dy):
+        # Fingers down = content down = wheel up (positive); fingers right = content right = wheel left (negative).
+        # Smooth (hi-res) steps as the fingers move, plus a whole notch for every 120 of them, for older apps.
+        self.sy += dy * self.HI_RES
+        self.sx -= dx * self.HI_RES
+        ev = []
+        for attr, sent, hi, lo in (("sy", "wy", self.REL_WHEEL_HI_RES, self.REL_WHEEL),
+                                   ("sx", "wx", self.REL_HWHEEL_HI_RES, self.REL_HWHEEL)):
+            v = int(getattr(self, attr))
+            if not v:
+                continue
+            setattr(self, attr, getattr(self, attr) - v)
+            ev.append((self.EV_REL, hi, v))
+            w = getattr(self, sent) + v
+            notches = int(w / 120)
+            if notches:
+                ev.append((self.EV_REL, lo, notches))
+                w -= notches * 120
+            setattr(self, sent, w)
+        if ev:
+            self._emit(ev)
+
+    def close(self):
+        try:
+            import fcntl
+            fcntl.ioctl(self.fd, self.UI_DEV_DESTROY)
+            os.close(self.fd)
+        except OSError:
+            pass
+
+
+def _linux():
+    """uinput first (Wayland and X11); without access to it, XTest on X11."""
+    wayland = os.environ.get("XDG_SESSION_TYPE") == "wayland" or bool(os.environ.get("WAYLAND_DISPLAY"))
+    try:
+        return _Uinput()
+    except OSError as e:
+        if wayland or not os.environ.get("DISPLAY"):
+            raise                           # XTest on Wayland only reaches X11 windows: no use
+        log.info("trackpad: %s; using XTest", e)
+    return _X11()
+
+
 class _X11:
     def __init__(self):
         if not os.environ.get("DISPLAY"):
-            raise OSError("no X11 display (Wayland desktops don't let apps move the pointer)")
+            raise OSError("no X11 display")
         x11 = ctypes.cdll.LoadLibrary(ctypes.util.find_library("X11") or "libX11.so.6")
         xt = ctypes.cdll.LoadLibrary(ctypes.util.find_library("Xtst") or "libXtst.so.6")
         x11.XOpenDisplay.restype, x11.XOpenDisplay.argtypes = ctypes.c_void_p, [ctypes.c_char_p]
@@ -244,7 +357,7 @@ class Pointer:
     def _get(self):
         if self.backend is None and self.error is None:
             try:
-                self.backend = _Windows() if IS_WIN else _Mac() if IS_MAC else _X11()
+                self.backend = _Windows() if IS_WIN else _Mac() if IS_MAC else _linux()
             except Exception as e:  # noqa: BLE001
                 self.error = str(e) or type(e).__name__
                 log.info("trackpad: can't move the pointer here: %s", self.error)

@@ -35,6 +35,10 @@ contents:
     dst: /usr/share/applications/winlink.desktop
   - src: ./assets/WinLink.png
     dst: /usr/share/icons/hicolor/256x256/apps/winlink.png
+  - src: ./packaging/linux/70-winlink-uinput.rules
+    dst: /usr/lib/udev/rules.d/70-winlink-uinput.rules
+  - src: ./packaging/linux/winlink-uinput.conf
+    dst: /usr/lib/modules-load.d/winlink-uinput.conf
   - src: ./docs/linux.md
     dst: /usr/share/doc/winlink/README.md
   - src: ./LICENSE
@@ -57,6 +61,7 @@ overrides:
       - pulseaudio-utils
       - xdg-utils
       - libxfixes3
+      - libxtst6
     recommends:
       - gir1.2-ayatanaappindicator3-0.1
       - xclip
@@ -79,6 +84,7 @@ overrides:
       - pulseaudio-utils
       - xdg-utils
       - libXfixes
+      - libXtst
     recommends:
       - libayatana-appindicator-gtk3
       - xclip
