@@ -85,7 +85,7 @@ Anything marked `✗` says what to install; `!` is optional.
 
 ## Desktop use
 
-Open **WinLink** from your apps menu or run `winlink`. Everything in the main [README](../README.md#using-winlink)
+Open **WinLink** from your apps menu or run `winlink`. Everything in the main [README](../README.md#features)
 applies; Linux specifics:
 
 | | |
