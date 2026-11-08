@@ -106,8 +106,8 @@ class Controller {
   private tailscale: TailscaleView = { installed: null, on: false, ips: [] };
   private anywhere: Anywhere | null = null;
   private soundCheck: ReturnType<typeof setInterval> | null = null;
-  private keepAliveStop: ReturnType<typeof setTimeout> | null = null;
   private keepAliveText = "";
+  private waiting: boolean | null = null;
   private delayTick: ReturnType<typeof setInterval> | null = null;
 
   private background(): Snapshot["background"] {
@@ -311,6 +311,7 @@ class Controller {
       this.autoClipAt = 0;
       this.changed();
     });
+    Native.addListener("onWake", () => this.onScreenOn());     // same: look for computers now
     Native.addListener("onScreen", (e) => {
       if (e.on) this.onScreenOn();
     });
@@ -532,11 +533,14 @@ class Controller {
     this.changed();
   }
 
+  /** Android: the background service runs whenever "Stay connected" is on, connected or not. Without
+   * it Android freezes the app once you leave it, so no computer can reach the phone, and it can't be
+   * started again from the background (Android refuses): it must already be running. */
   private updateKeepAlive() {
     if (RN.OS !== "android" || !this.node || !this.settings) return;
     const on = this.node.connected();
-    const want = this.settings.keepAlive && on.length > 0;
-    if (want && !this.settings.backgroundHinted) {
+    const want = this.settings.keepAlive;
+    if (want && !this.settings.backgroundHinted && on.length > 0) {
       const b = this.background();
       if (b && !b.unrestricted) {       // once: without this, many phones pause WinLink when you leave it
         this.settings.backgroundHinted = true;
@@ -544,26 +548,26 @@ class Controller {
         this.setNotice("To stay connected when you leave WinLink, allow it in the background: Settings › In the background › Allow.");
       }
     }
+    const waiting = want && on.length === 0;
+    if (waiting !== this.waiting) {
+      this.waiting = waiting;
+      try {
+        Native.setWaiting(waiting);
+      } catch {
+        /* an older build */
+      }
+    }
     if (want) {
-      if (this.keepAliveStop) clearTimeout(this.keepAliveStop);
-      this.keepAliveStop = null;
-      const text = `Connected to ${on.map((p) => p.name).join(", ")}`;
+      const text = on.length ? `Connected to ${on.map((p) => p.name).join(", ")}` : "Waiting for your computers";
       if (this.keepAliveOn && text === this.keepAliveText) return;     // already showing that
       if (Native.startKeepAlive(text)) {
         this.keepAliveOn = true;
         this.keepAliveText = text;
       }
-    } else if (this.keepAliveOn && !this.keepAliveStop) {
-      // Connections drop and come back (Wi-Fi hiccups, moving to Tailscale): only stop the
-      // background service once nothing has been connected for a while. Starting and stopping it
-      // within seconds is also what makes Android end the app.
-      this.keepAliveStop = setTimeout(() => {
-        this.keepAliveStop = null;
-        if (this.node?.connected().length && this.settings?.keepAlive) return;
-        Native.stopKeepAlive();
-        this.keepAliveOn = false;
-        this.keepAliveText = "";
-      }, this.settings.keepAlive ? 30000 : 0);
+    } else if (this.keepAliveOn) {
+      Native.stopKeepAlive();
+      this.keepAliveOn = false;
+      this.keepAliveText = "";
     }
   }
 

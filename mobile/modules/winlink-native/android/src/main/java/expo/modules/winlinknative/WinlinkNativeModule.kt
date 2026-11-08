@@ -53,7 +53,7 @@ class WinlinkNativeModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("WinlinkNative")
-    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen", "onAutoClip")
+    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen", "onAutoClip", "onWake")
 
     OnCreate {
       Bridge.module = this@WinlinkNativeModule
@@ -130,6 +130,12 @@ class WinlinkNativeModule : Module() {
     // ---- staying connected in the background
     Function("startKeepAlive") { text: String ->
       val ctx = context
+      if (LinkService.running) {          // already running: just change its notification (a new start
+        LinkService.instance?.let { s ->   // from the background is refused)
+          android.os.Handler(android.os.Looper.getMainLooper()).post { s.setText(text) }
+        }
+        return@Function true
+      }
       val intent = Intent(ctx, LinkService::class.java).putExtra("text", text)
       try {
         if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(intent) else ctx.startService(intent)
@@ -214,6 +220,7 @@ class WinlinkNativeModule : Module() {
 
     // ---- battery: keep the phone awake with the screen off only while this is true (see LinkService)
     Function("setBusy") { on: Boolean -> LinkService.markBusy(on) }
+    Function("setWaiting") { on: Boolean -> LinkService.markWaiting(on) }
 
     // ---- a clock for JS timers in the background (React Native stops them there; see src/bgtimers.ts)
     Function("setTicking") { on: Boolean ->

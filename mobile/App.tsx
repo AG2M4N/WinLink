@@ -733,7 +733,7 @@ function Settings({ c, st, snap }: PageProps) {
             <View style={st.row}>
               <View style={{ flex: 1 }}>
                 <Text style={st.name}>Stay connected</Text>
-                <Text style={st.sub}>Keeps receiving files, clipboard and sound with the app closed. Shows a notification while connected.</Text>
+                <Text style={st.sub}>Keeps receiving files, clipboard and sound with the app closed, and lets your computers find the phone even when none is connected. Shows a notification while on.</Text>
               </View>
               <Switch value={snap.keepAlive} onValueChange={(v) => controller.setKeepAlive(v)} trackColor={{ true: c.accent }} />
             </View>

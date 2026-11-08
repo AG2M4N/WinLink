@@ -1,5 +1,6 @@
 package expo.modules.winlinknative
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,28 +13,45 @@ import android.os.Build
 import android.net.wifi.WifiManager
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 
 /** Keeps WinLink running in the background so files, clipboard and sound keep arriving.
  * Its notification has a "Send clipboard" button.
  *
+ * It runs whenever "Stay connected" is on, with or without a computer connected: without it Android
+ * freezes the app in the background, so computers couldn't reach it, and it can't be started again
+ * from the background.
+ *
  * Battery: the wake and Wi-Fi locks (CPU and Wi-Fi fully awake) are held only while the screen is on,
  * or while WinLink is busy (sound playing or being shared, a file transferring). With the screen off
- * and nothing going on, the phone sleeps as usual; computers see it go offline, and it reconnects
- * as soon as the screen comes back on. */
+ * and nothing going on, the phone sleeps as usual.
+ *
+ * Phones do the dialling (computers never call a phone first), and asleep the phone can't. So while no
+ * computer is connected and the screen is off, an alarm wakes it about once a minute (Android may
+ * stretch that to every few minutes in deep sleep) for ~20 s to look for them, then lets it sleep. */
 class LinkService : Service() {
   companion object {
     const val CHANNEL = "winlink-link"
     const val ID = 4201
     const val ACTION_STOP = "expo.modules.winlinknative.STOP"
+    const val ACTION_WAKE = "expo.modules.winlinknative.WAKE"
+    const val WAKE_EVERY_MS = 60_000L
+    const val LOOK_MS = 20_000L
     @Volatile var running = false
     @Volatile var busy = false            // set from JS: sound or a transfer under way
+    @Volatile var waiting = false         // set from JS: no computer connected
     @Volatile var instance: LinkService? = null
 
     /** JS says whether something's under way that must keep going with the screen off. */
     fun markBusy(on: Boolean) {
       busy = on
       instance?.let { s -> android.os.Handler(android.os.Looper.getMainLooper()).post { s.applyLocks() } }
+    }
+    /** JS says whether no computer is connected (so asleep, the phone should wake now and then to look). */
+    fun markWaiting(on: Boolean) {
+      waiting = on
+      instance?.let { s -> android.os.Handler(android.os.Looper.getMainLooper()).post { s.schedule() } }
     }
     fun notification(ctx: Context, text: String): Notification {
       val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -69,6 +87,9 @@ class LinkService : Service() {
       addAction(Intent.ACTION_SCREEN_ON)
       addAction(Intent.ACTION_SCREEN_OFF)
     })
+    val wakeFilter = android.content.IntentFilter(ACTION_WAKE)
+    if (Build.VERSION.SDK_INT >= 33) registerReceiver(wake_, wakeFilter, Context.RECEIVER_NOT_EXPORTED)
+    else registerReceiver(wake_, wakeFilter)
     goForeground("Connected")
     try { ClipWatcher.sync(this) } catch (e: Throwable) {}
   }
@@ -77,6 +98,8 @@ class LinkService : Service() {
     running = false
     if (instance === this) instance = null
     try { unregisterReceiver(screen) } catch (e: Throwable) {}
+    try { unregisterReceiver(wake_) } catch (e: Throwable) {}
+    try { alarms().cancel(wakeIntent()) } catch (e: Throwable) {}
     releaseLocks()
     super.onDestroy()
   }
@@ -86,9 +109,51 @@ class LinkService : Service() {
   private val screen = object : android.content.BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
       applyLocks()
+      schedule()
       if (intent.action == Intent.ACTION_SCREEN_ON) {
         Bridge.send("onScreen", mapOf("on" to true))      // reconnect now, don't wait for a retry
       }
+    }
+  }
+
+  // ---- looking for computers while asleep
+  private fun alarms() = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+  private fun wakeIntent(): PendingIntent = PendingIntent.getBroadcast(
+    this, 2, Intent(ACTION_WAKE).setPackage(packageName),
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+  /** The next wake-up, if one's needed: nothing connected, screen off (on, JS runs anyway), not busy. */
+  fun schedule() {
+    if (!running) return
+    val on = (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+    try {
+      if (waiting && !on && !busy) {
+        // Inexact and allowed in Doze: needs no exact-alarm permission. Unrestricted apps get it more often.
+        alarms().setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+          SystemClock.elapsedRealtime() + WAKE_EVERY_MS, wakeIntent())
+      } else {
+        alarms().cancel(wakeIntent())
+      }
+    } catch (e: Throwable) {
+      Log.w("WinLink", "background service: no wake-up alarm: ${e.message}")
+    }
+  }
+
+  private var looking: PowerManager.WakeLock? = null
+
+  private val wake_ = object : android.content.BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+      if (!waiting) return
+      try {
+        if (looking == null) {
+          looking = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WinLink:looking").apply { setReferenceCounted(false) }
+        }
+        looking?.acquire(LOOK_MS)                // lets go by itself: no leak if JS never answers
+      } catch (e: Throwable) {}
+      Bridge.send("onWake", mapOf<String, Any?>())    // JS: try every computer now
+      schedule()
     }
   }
 
@@ -147,6 +212,13 @@ class LinkService : Service() {
     return START_STICKY
   }
 
+  /** New notification text ("Connected to …" / "Waiting for your computers"), service already running. */
+  fun setText(text: String) {
+    try {
+      (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(ID, notification(this, text))
+    } catch (e: Throwable) {}
+  }
+
   private fun goForeground(text: String) {
     try {
       val n = notification(this, text)
@@ -156,6 +228,7 @@ class LinkService : Service() {
         startForeground(ID, n)
       }
       applyLocks()
+      schedule()
     } catch (e: Throwable) {        // not allowed right now (e.g. started from the background): give up quietly
       Log.w("WinLink", "background service: ${e.message}")
       stopSelf()

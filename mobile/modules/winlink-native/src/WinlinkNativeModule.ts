@@ -9,6 +9,8 @@ type Events = {
   onTick(e: Record<string, never>): void;
   onScreen(e: { on: boolean }): void;
   onAutoClip(e: { running: boolean }): void;
+  /** Android: woken (screen off, nothing connected) to look for computers for a few seconds. */
+  onWake(e: Record<string, never>): void;
 };
 
 declare class WinlinkNativeModule extends NativeModule<Events> {
@@ -52,6 +54,8 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   setTicking(on: boolean): void;
   /** Android, newer builds: something's under way (sound, a transfer): stay awake with the screen off. */
   setBusy(on: boolean): void;
+  /** Android, newer builds: no computer connected: asleep, wake now and then to look for them. */
+  setWaiting(on: boolean): void;
   saveToDownloads(path: string, name: string, sub: string): Promise<string>;
   deleteSaved(uri: string): Promise<boolean>;
   openSaved(uri: string, mime: string | null): Promise<void>;

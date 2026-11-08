@@ -1,15 +1,10 @@
-**A much more reliable Android app.**
+**Android: your computers can always find the phone.**
 
 **Fixed**
-- **The Android app no longer crashes after a few hours.** Every connection left a little behind inside the app, and with *Connect from anywhere* on (which checks in every few seconds) that added up until Android closed WinLink. This also paused hands-free copying from the phone.
-- **Hands-free copying recovers by itself.** If Android pauses it, a notification says so, and opening WinLink starts it again. If Android asks *"Allow WinLink to access all device logs?"*, tap **Allow**.
-- **Linux: the phone trackpad works on Wayland** (the default on Ubuntu and Fedora), not only X11. Log out and back in once after installing.
+- **The Android app no longer goes to sleep when no computer is connected.** Before, WinLink stopped its background service 30 seconds after the last computer disconnected, so Android froze the app and it stayed unreachable until you opened it again. Now it keeps running whenever *Stay connected* is on, and its notification says *Waiting for your computers*.
+- **With the screen off, the phone looks for your computers by itself** about once a minute (Android may stretch that to every few minutes in deep sleep), so it reconnects without you touching it. For this to work in deep sleep, set WinLink to run unrestricted: *Settings › In the background › Allow* in the app.
 
-**Also**
-- A shorter README, with every feature in a section you can open.
-- Linux: apt's *"Download is performed unsandboxed as root"* note is explained (it's harmless).
-
-Everything from [2026.11.9](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.9) is included: the phone trackpad, hands-free copying from Android, keyboard and mouse over admin windows on Windows, pictures both ways with the Android app, and smoother sound away from home.
+Everything from [2026.11.11](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.11) is included.
 
 **Downloads**
 | System | File | How |
