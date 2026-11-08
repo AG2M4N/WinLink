@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <a href="docs/demo/winlink-demo.mp4"><img src="docs/demo/winlink-demo-poster.jpg" width="880" alt="Watch the WinLink demo (54 seconds): pairing, one clipboard, one keyboard and mouse, the phone as a trackpad, files, sound and connecting from anywhere"></a>
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/devices-dark.png">
     <img src="docs/screenshots/devices-light.png" width="880" alt="WinLink's Devices page: a Mac, PCs and an Android phone connected, one asking to pair with a 4-digit code">
