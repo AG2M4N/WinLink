@@ -27,7 +27,7 @@
     "react-native": "0.88.1",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-tcp-socket": "file:vendor/react-native-tcp-socket",
-    "react-native-zeroconf": "^0.17.7"
+    "react-native-zeroconf": "file:vendor/react-native-zeroconf"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
