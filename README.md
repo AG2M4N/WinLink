@@ -18,15 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AG2M4N/WinLink/raw/main/docs/demo/winlink-demo.mp4"><img src="docs/demo/winlink-demo.gif" width="880" alt="The WinLink demo (54 seconds): pairing, one clipboard, one keyboard and mouse, the phone as a trackpad, files, sound and connecting from anywhere"></a><br>
-  <sub>Click for the full-quality video (MP4, 9 MB).</sub>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/devices-dark.png">
-    <img src="docs/screenshots/devices-light.png" width="880" alt="WinLink's Devices page: a Mac, PCs and an Android phone connected, one asking to pair with a 4-digit code">
-  </picture>
+  <a href="https://github.com/AG2M4N/WinLink/raw/main/docs/demo/winlink-demo.mp4"><img src="docs/demo/winlink-demo.gif" width="880" alt="The WinLink demo (54 seconds): pairing, one clipboard, one keyboard and mouse, the phone as a trackpad, files, sound and connecting from anywhere"></a>
 </p>
 
 WinLink is a free app for **Mac, Windows, Linux and Android**. Install it on each device and pair them
