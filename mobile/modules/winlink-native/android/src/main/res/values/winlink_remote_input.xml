@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="winlink_remote_input_label">WinLink mouse and keyboard</string>
+  <string name="winlink_remote_input_summary">Use this phone with your computer\'s mouse and keyboard</string>
+  <string name="winlink_remote_input_description">Lets the computer you pair with WinLink control this phone with its mouse and keyboard: move the pointer off the computer\'s screen edge and onto the phone. WinLink shows a pointer, taps and scrolls where you click, types into the text box you\'re in, and presses Back, Home and Recents. It only acts while a paired computer sends it the mouse and keyboard, over WinLink\'s encrypted connection; the only thing it reads is the text box you\'re typing in, and it sends nothing from the phone.</string>
+</resources>

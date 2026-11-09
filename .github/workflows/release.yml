@@ -173,6 +173,14 @@ jobs:
           python packaging\check_opus.py src
           if ($LASTEXITCODE) { throw "Opus check failed" }
           & dist\WinLink\deskflow\deskflow-core.exe --version
+      # A phone next to this PC, with the real Deskflow: WinLink joins for it, and the mouse pushed off
+      # the right edge reaches it. Reported, but it doesn't stop the release (runners' desktops vary).
+      - name: Phone screen with the real Deskflow
+        continue-on-error: true
+        run: |
+          $env:WINLINK_DESKFLOW = "$PWD\deskflow-engine\deskflow-core.exe"
+          python mobile\tests\harness\desktop_phone.py "$env:RUNNER_TEMP\phone"
+          if ($LASTEXITCODE) { throw "phone screen checks failed" }
       - name: Installer
         run: |
           if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {

@@ -12,7 +12,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Native from "./modules/winlink-native";
 import * as Clipboard from "expo-clipboard";
-import { AutoClipView, ClipItem, controller, DeviceView, Snapshot, TransferView } from "./src/controller";
+import { AutoClipView, ClipItem, controller, DeviceView, RemoteView, Snapshot, TransferView } from "./src/controller";
 
 // ---------------------------------------------------------------- look
 const LIGHT = { bg: "#F4F4F2", card: "#FFFFFF", raised: "#EFEFEC", text: "#1C1C1E", text2: "#6C6C70", text3: "#9A9AA0",
@@ -333,6 +333,7 @@ function TrackpadPage({ c, st, snap }: PageProps) {
   useEffect(() => () => controller.closeTrackpad(), []);          // leaving the tab: let go of any button
   return (
     <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
+      {snap.remote ? <RemoteCard c={c} st={st} r={snap.remote} /> : null}
       {computers.length ? (
         <>
           {computers.length > 1 ? (
@@ -351,6 +352,42 @@ function TrackpadPage({ c, st, snap }: PageProps) {
           <Text style={st.sub}>Connect a Mac or PC on the Devices tab, then use this phone as its trackpad.</Text>
         </View>
       )}
+    </View>
+  );
+}
+
+/** The other way round: the computer's mouse and keyboard on this phone (an accessibility service). */
+function RemoteCard({ c, st, r }: { c: Colors; st: PageProps["st"]; r: RemoteView }) {
+  const [open, setOpen] = useState(false);
+  if (r.on) {
+    return (
+      <Text style={[st.sub, { marginBottom: 10, color: r.from ? c.good : c.text2 }]}>
+        {r.from ? `Using ${r.from}'s mouse and keyboard here.`
+          : "Your computer's mouse and keyboard can work here too: on the computer, place this phone next to it under Keyboard and mouse."}
+      </Text>
+    );
+  }
+  return (
+    <View style={[st.card, { marginBottom: 12 }]}>
+      <Text style={st.name}>Use your computer's mouse and keyboard here</Text>
+      <Text style={st.sub}>Move the pointer off the computer's screen and onto this phone: click to tap, scroll with the wheel, type into any text box. Esc is Back; the Windows key (Ctrl on a Mac) is Home.</Text>
+      <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <Button st={st} title="Turn on in Accessibility" kind="primary" onPress={() => controller.openAccessibilitySettings()} />
+        <Button st={st} title={open ? "Hide help" : "It's greyed out"} kind="quiet" onPress={() => setOpen(!open)} />
+      </View>
+      <Text style={[st.hint, { marginTop: 8 }]}>
+        In Accessibility, open “WinLink mouse and keyboard” (sometimes under Installed apps or Downloaded apps) and turn it on.
+      </Text>
+      {open ? (
+        <View style={{ marginTop: 8 }}>
+          <Text style={st.hint}>
+            Android 13 and newer block this for apps installed from a file until you allow it: open WinLink's App info, tap ⋮ (top right), then “Allow restricted settings”, and come back to Accessibility. The ⋮ menu only shows after you've tried to turn it on once.
+          </Text>
+          <View style={{ marginTop: 8, alignItems: "flex-start" }}>
+            <Button st={st} title="Open App info" kind="quiet" onPress={() => controller.openAppDetails()} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -10,6 +10,7 @@ The computer whose keyboard and mouse you use is the *server*; the others are *c
     (WinLink's settings folder/kvm; Deskflow's own settings are left alone),
   - runs deskflow-core and reads its log for status.
 Deskflow's clipboard sharing is off: WinLink already shares the clipboard (with images and history).
+Phones can be placed in the arrangement too: see kvm_phone.py.
 """
 
 import datetime
@@ -23,6 +24,8 @@ import subprocess
 import sys
 import threading
 import time
+
+import kvm_phone
 
 log = logging.getLogger("winlink")
 IS_WIN = os.name == "nt"
@@ -595,7 +598,9 @@ class Sharing:
         self.path = None             # client: how Deskflow reaches the server ("direct", "tunnel", "relay")
         self.bad_paths = {}          # (peer id, path) -> when it last failed to connect
         self.rtt = {}                # peer id -> round trip in ms (measured over WinLink's link)
-        self.clients = {}            # server: peer id -> {"fp", "screen", "state", "text", "path"}
+        self.clients = {}            # server: peer id -> {"fp", "screen", "state", "text", "path", "phone"}
+        self.phones = {}             # phone id -> {"ready", "w", "h", "why"}: what each phone said it can do
+        self.phone_screens = {}      # server: phone id -> kvm_phone.PhoneScreen (Deskflow's screen for it)
         self.status, self.problem = "", ""
         self.applied = None
         self.lock = threading.RLock()
@@ -670,8 +675,9 @@ class Sharing:
             old = self.conf.get("grid", {})
             for pid in set(old) - set(clean):            # taken out: stop following
                 peer = self.node.peers.get(pid)
-                if peer is not None and peer.control is not None:
+                if peer is not None and peer.control is not None and pid not in self.phones:
                     self._send(peer, {"op": "leave"})
+                self._drop_phone(pid)
                 self.clients.pop(pid, None)
             self.conf["grid"] = {pid: list(xy) for pid, xy in clean.items()}
             self._save()
@@ -714,6 +720,16 @@ class Sharing:
                 return
             for pid in self.conf.get("grid", {}):
                 peer = self.node.peers.get(pid)
+                if peer is not None and peer.os == "android":
+                    ph = self.phones.get(pid)
+                    if peer.control is None or not ph or not ph.get("ready"):
+                        self._drop_phone(pid)             # not there, or can't take input right now
+                        self.clients.pop(pid, None)
+                        continue
+                    c = self.clients.setdefault(pid, {"screen": screen_name(peer.name, pid), "state": "starting",
+                                                      "text": "", "phone": True})
+                    c["fp"] = self.files.fingerprint()     # this computer joins for it (kvm_phone.py)
+                    continue
                 if peer is None or peer.os not in ("mac", "windows", "linux"):
                     continue
                 c = self.clients.setdefault(pid, {"fp": "", "screen": screen_name(peer.name, pid),
@@ -735,6 +751,7 @@ class Sharing:
         ready = [(pid, c) for pid, c in answered.items() if c["screen"] in near]
         positions = {n: xy for n, xy in positions.items() if n in near}
         if not ready:                       # nobody to share with yet: just don't run the engine
+            self._sync_phones([])
             if self.role == "server" and self.engine is not None:
                 self.engine.stop()
                 self.role = None
@@ -747,21 +764,24 @@ class Sharing:
         key = tuple(sorted((n, xy) for n, xy in positions.items())) + tuple(sorted(c["fp"] for _, c in ready)) \
             + ("swap",) + tuple(swapped)
         if key == self.applied and self.engine.running:
+            self._sync_phones(ready)
             return
-        self.files.trust("clients", [c["fp"] for _, c in ready])
+        self.files.trust("clients", sorted({c["fp"] for _, c in ready}))
         self.files.write_settings(me, screens=list(positions), swapped=swapped)
         self.files.write_layout(positions)
         self.applied = key
         self.role = "server"
         self.engine.start("server")
         self._expose(True)
+        self._sync_phones(ready)
         self.status = "Move the pointer off this screen's edge to reach the computers placed below."
 
     def _stop_server(self):
         with self.lock:
+            self._sync_phones([])
             for pid in list(self.clients):
                 peer = self.node.peers.get(pid)
-                if peer is not None and peer.control is not None:
+                if peer is not None and peer.control is not None and not self.clients[pid].get("phone"):
                     self._send(peer, {"op": "leave"})
             self.clients.clear()
             self.applied = None
@@ -770,6 +790,55 @@ class Sharing:
                 self.role = None
             self._expose(False)
             self.status = ""
+
+    # ---- phones (kvm_phone.py)
+    def _sync_phones(self, ready):
+        """Server: a PhoneScreen for each phone in `ready` ([(id, client)]), none for the rest."""
+        want = {pid: c for pid, c in ready if c.get("phone")}
+        for pid in list(self.phone_screens):
+            if pid not in want:
+                self._drop_phone(pid)
+        for pid, c in want.items():
+            peer, ph = self.node.peers.get(pid), self.phones.get(pid) or {}
+            if pid in self.phone_screens or peer is None:
+                continue
+            self.phone_screens[pid] = kvm_phone.PhoneScreen(
+                c["screen"], self.files.cert, self.files.fingerprint(), (ph.get("w", 720), ph.get("h", 1600)),
+                send=lambda body, peer=peer: peer.control.send({"type": "remote", **body}),
+                on_state=lambda on, pid=pid: self._phone_state(pid, on), port=PORT).start()
+            log.info("keyboard and mouse: %s's screen joins the arrangement", peer.name)
+
+    def _drop_phone(self, pid):
+        screen = self.phone_screens.pop(pid, None)
+        if screen is not None:
+            screen.stop()
+            peer = self.node.peers.get(pid)
+            if peer is not None and peer.control is not None:
+                self._send(peer, {"op": "screen", "on": False})
+
+    def _phone_state(self, pid, on):
+        with self.lock:
+            c = self.clients.get(pid)
+            if c is not None:
+                c["state"] = "on" if on else "starting"
+            peer = self.node.peers.get(pid)
+            if peer is not None and peer.control is not None and pid in self.phone_screens:
+                self._send(peer, {"op": "screen", "on": on, "from": self.node.name})
+        self.on_change()
+
+    def _phone_said(self, peer, msg):
+        """A phone told us whether it can take the mouse and keyboard (its accessibility service is on)
+        and its screen size, in the units it wants the pointer in."""
+        try:
+            w, h = int(msg.get("w", 0)), int(msg.get("h", 0))
+        except (TypeError, ValueError):
+            return
+        ready = bool(msg.get("ready")) and 100 <= w <= 10000 and 100 <= h <= 10000
+        self.phones[peer.id] = {"ready": ready, "w": w, "h": h, "why": str(msg.get("why") or "")[:160]}
+        screen = self.phone_screens.get(peer.id)
+        if screen is not None and ready:
+            screen.resize(w, h)
+        self.refresh()
 
     def _expose(self, on):
         """Server: let computers on WinLink's built-in Tailscale reach our Deskflow server through
@@ -813,6 +882,8 @@ class Sharing:
                                      name="kvm dial back").start()
             elif op == "path" and peer.id in self.clients and msg.get("path") in ("direct", "tunnel", "relay"):
                 self.clients[peer.id]["path"] = msg["path"]
+            elif op == "phone" and peer.os == "android":
+                self._phone_said(peer, msg)
             elif op == "ping":
                 self._send(peer, {"op": "pong", "t": msg.get("t")})
             elif op == "pong" and isinstance(msg.get("t"), (int, float)):
@@ -928,7 +999,8 @@ class Sharing:
             time.sleep(3)
             with self.lock:
                 if self.role == "server":
-                    peers = [self.node.peers.get(pid) for pid, c in self.clients.items() if c.get("state") == "on"]
+                    peers = [self.node.peers.get(pid) for pid, c in self.clients.items()
+                             if c.get("state") == "on" and not c.get("phone")]
                 elif self.role == "client":
                     peers = [self.server_peer]
                 else:
@@ -1097,6 +1169,8 @@ class Sharing:
                 self.engine.start("client")
 
     def stop_all(self):
+        for pid in list(self.phone_screens):
+            self._drop_phone(pid)
         if self.engine is not None:
             self.engine.stop()
             if self.engine.link is not None:           # the elevated helper stops Deskflow and exits
@@ -1132,11 +1206,15 @@ class Sharing:
         near = reachable(positions, "__me__")
         computers = []
         for p in connected:
-            if p.os not in ("mac", "windows", "linux"):
+            if p.os not in ("mac", "windows", "linux", "android"):
                 continue
             c = self.clients.get(p.id, {})
             text = {"on": "Connected", "starting": "Starting…",
                     "waiting": "Waiting for it to answer", "no": c.get("text", "")}.get(c.get("state"), "")
+            if p.os == "android" and not c:
+                ph = self.phones.get(p.id)
+                text = (ph.get("why") or "Turn on WinLink in the phone's Settings › Accessibility") if ph \
+                    else "Update WinLink on the phone to use it here"
             if c.get("state") == "on":
                 text = " · ".join(x for x in ("Connected", self.describe(p, c.get("path"))) if x)
             pos = grid.get(p.id)

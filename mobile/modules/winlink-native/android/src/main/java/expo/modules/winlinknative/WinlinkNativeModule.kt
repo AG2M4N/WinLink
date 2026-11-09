@@ -53,7 +53,7 @@ class WinlinkNativeModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("WinlinkNative")
-    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen", "onAutoClip", "onWake")
+    Events("onPcm", "onCapture", "onClipboardShare", "onNetwork", "onTick", "onScreen", "onAutoClip", "onWake", "onRemoteStatus")
 
     OnCreate {
       Bridge.module = this@WinlinkNativeModule
@@ -254,6 +254,21 @@ class WinlinkNativeModule : Module() {
       } catch (e: Throwable) {
         ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       }
+    }
+
+    // ---- your computer's mouse and keyboard on this phone (RemoteInputService)
+    Function("remoteStatus") { RemoteInputService.status(context) }
+    Function("remoteInput") { msg: Map<String, Any?> -> RemoteInputService.handle(msg) }
+    Function("openAccessibilitySettings") {
+      val ctx = context
+      ctx.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+    // Android 13+: a sideloaded app's accessibility service is greyed out until "Allow restricted
+    // settings" in its App info (⋮ menu) is tapped.
+    Function("openAppDetails") {
+      val ctx = context
+      ctx.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     // ---- received files

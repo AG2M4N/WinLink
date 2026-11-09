@@ -188,7 +188,9 @@ export type NodeEvent =
   | { kind: "pair_code"; peer: Peer; code: string }
   | { kind: "notice"; text: string }
   | { kind: "sound_in"; peer: Peer | null; info: SoundInfo | null }
-  | { kind: "sound_out"; text: string; state: "playing" | "retry" | "off" | "idle" };
+  | { kind: "sound_out"; text: string; state: "playing" | "retry" | "off" | "idle" }
+  /** A computer has (on) or no longer has this phone as a screen for its mouse and keyboard. */
+  | { kind: "kvm_screen"; peer: Peer; on: boolean };
 
 export interface SoundInfo {
   rate: number;
@@ -641,6 +643,7 @@ export class Node {
     old?.close();
     this.emit({ kind: "peers" });
     this.log("info", `connected to ${peer.name} via ${conn.route} (${conn.addr})`);
+    if (this.phoneStatus) ctrl.send({ type: "kvm", op: "phone", ...this.phoneStatus }).catch(() => undefined);
     try {
       for (;;) {
         const msg = await conn.recvJson(160 * 2 ** 20);
@@ -654,6 +657,10 @@ export class Node {
         } else if (kind === "info" && Array.isArray(msg.ts_addrs)) {
           const ts = msg.ts_addrs.filter((a: unknown) => typeof a === "string" && a.length < 64).slice(0, 6);
           this.saveTrusted(peer, { tsAddrs: ts });
+        } else if (kind === "remote") {           // the computer's mouse and keyboard, for this phone
+          this.onRemote?.(msg);
+        } else if (kind === "kvm" && msg.op === "screen") {
+          this.emit({ kind: "kvm_screen", peer, on: !!msg.on });
         } else if (kind === "pointer" && msg.op === "no" && typeof msg.reason === "string") {
           this.emit({ kind: "notice", text: `${peer.name}: ${msg.reason.slice(0, 200)}` });
         } else if (kind === "bye") {
@@ -739,6 +746,20 @@ export class Node {
     } finally {
       conn.close();
     }
+  }
+
+  // ---- this phone as a screen for a computer's mouse and keyboard (kvm_phone.py on the computer)
+  /** Called with each {"type": "remote", ...} message (straight to the native service, no re-render). */
+  onRemote: ((msg: Record<string, unknown>) => void) | null = null;
+  private phoneStatus: { ready: boolean; w: number; h: number; why: string } | null = null;
+
+  /** Whether this phone can take a computer's mouse and keyboard now, and its size: told to every
+   * computer, now and whenever one connects. */
+  setPhoneStatus(s: { ready: boolean; w: number; h: number; why: string }) {
+    const old = this.phoneStatus;
+    if (old && old.ready === s.ready && old.w === s.w && old.h === s.h && old.why === s.why) return;
+    this.phoneStatus = s;
+    for (const p of this.connected()) p.control!.send({ type: "kvm", op: "phone", ...s }).catch(() => undefined);
   }
 
   // ---- clipboard

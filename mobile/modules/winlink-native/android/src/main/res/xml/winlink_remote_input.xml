@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WinLink's accessibility service (RemoteInputService): your computer's mouse and keyboard on this
+     phone. Gestures for taps and swipes, the focused text box for typing (and, on Android 13+, the
+     accessibility input method, so keys arrive like a real keyboard's). It reads no screen content
+     except the focused text box, and only to type into it. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+  android:description="@string/winlink_remote_input_description"
+  android:summary="@string/winlink_remote_input_summary"
+  android:accessibilityEventTypes="typeWindowStateChanged"
+  android:accessibilityFeedbackType="feedbackGeneric"
+  android:accessibilityFlags="flagDefault|flagInputMethodEditor"
+  android:canPerformGestures="true"
+  android:canRetrieveWindowContent="true"
+  android:isAccessibilityTool="false"
+  android:notificationTimeout="200" />

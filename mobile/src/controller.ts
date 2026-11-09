@@ -55,9 +55,18 @@ export interface Snapshot {
   background: { unrestricted: boolean; running: boolean } | null;    // Android, newer builds
   autoClip: AutoClipView | null;                                      // Android, newer builds
   trackpad: { id: string; name: string; on: boolean } | null;         // the computer the trackpad drives
+  remote: RemoteView | null;                                          // Android, newer builds
   tailscale: TailscaleView;
   anywhere: AnywhereView | null;
   notice: { text: string; at: number } | null;
+}
+
+/** A computer's mouse and keyboard on this phone (WinLink's accessibility service). */
+export interface RemoteView {
+  on: boolean;            // the service is running
+  enabled: boolean;       // turned on in Settings (it may still be starting)
+  keyboard: boolean;      // Android 13+: types like a real keyboard
+  from: string | null;    // the computer whose mouse and keyboard it has right now
 }
 
 /** "Send copies automatically": on, and which of its two permissions the person has given. */
@@ -312,6 +321,20 @@ class Controller {
       this.changed();
     });
     Native.addListener("onWake", () => this.onScreenOn());     // same: look for computers now
+    if (RN.OS === "android") {
+      this.node.onRemote = (msg) => {
+        try {
+          Native.remoteInput(msg);
+        } catch {
+          /* an older build */
+        }
+      };
+      Native.addListener("onRemoteStatus", () => {
+        this.refreshRemote();
+        this.changed();
+      });
+      this.refreshRemote();
+    }
     Native.addListener("onScreen", (e) => {
       if (e.on) this.onScreenOn();
     });
@@ -340,6 +363,7 @@ class Controller {
       this.anywhere?.nudge();
       this.updateKeepAlive();
       this.autoClipAt = 0;                         // e.g. back from allowing display over other apps
+      this.refreshRemote();                        // e.g. back from turning it on in Accessibility
       this.changed();                              // e.g. back from allowing background use
     } else if (s === "background" && RN.OS === "ios") {
       // iOS suspends apps soon after they leave the screen; sound keeps us alive while it plays.
@@ -515,6 +539,11 @@ class Controller {
           this.soundTone = "muted";
         }
         break;
+      case "kvm_screen":
+        if (e.on) this.remoteFrom = e.peer.name;
+        else if (this.remoteFrom === e.peer.name) this.remoteFrom = null;
+        if (this.remote) this.remote = { ...this.remote, from: this.remoteFrom };
+        break;
       case "peers":
         this.updateKeepAlive();
         if (this.soundSharing) this.maybeShareSound();
@@ -593,7 +622,7 @@ class Controller {
       return { ready: false, me: { name: "", os: platform.os }, devices: [], transfers: [], received: [],
         clipboard: { enabled: true, history: [] }, sound: { canShare: false, sharing: false, shareText: "", shareTone: "muted",
           target: null, playingFrom: null, playingInfo: "", latency: "auto", volume: 1 }, keepAlive: true,
-        background: null, autoClip: null, trackpad: null, tailscale: this.tailscale, anywhere: null, notice: null };
+        background: null, autoClip: null, trackpad: null, remote: null, tailscale: this.tailscale, anywhere: null, notice: null };
     }
     const devices: DeviceView[] = [...node.peers.values()].map((p) => ({
       id: p.id,
@@ -639,10 +668,48 @@ class Controller {
       autoClip: this.autoClip(),
       trackpad: this.trackpadFor ? { id: this.trackpadFor, name: node.peers.get(this.trackpadFor)?.name ?? "",
         on: !!node.peers.get(this.trackpadFor)?.control } : null,
+      remote: this.remote,
       tailscale: this.tailscale,
       anywhere: this.anywhere?.view() ?? null,
       notice: this.notice,
     };
+  }
+
+  // ---- a computer's mouse and keyboard on this phone
+  private remote: RemoteView | null = null;
+  private remoteFrom: string | null = null;
+
+  /** Ask the service how it is, and tell the computers (they place the phone only while it's on). */
+  refreshRemote() {
+    if (RN.OS !== "android" || !this.node) return;
+    let st: { on: boolean; enabled: boolean; w: number; h: number; keyboard: boolean };
+    try {
+      st = Native.remoteStatus();
+    } catch {
+      return;                               // an older build
+    }
+    if (!st.on) this.remoteFrom = null;
+    this.remote = { on: st.on, enabled: st.enabled, keyboard: st.keyboard, from: this.remoteFrom };
+    const why = st.on ? "" : st.enabled
+      ? "Turn WinLink mouse and keyboard off and on again in the phone's Settings › Accessibility"
+      : "Turn on WinLink mouse and keyboard in the phone's Settings › Accessibility";
+    this.node.setPhoneStatus({ ready: st.on, w: st.w, h: st.h, why });
+  }
+
+  openAccessibilitySettings() {
+    try {
+      Native.openAccessibilitySettings();
+    } catch {
+      /* older build */
+    }
+  }
+
+  openAppDetails() {
+    try {
+      Native.openAppDetails();
+    } catch {
+      /* older build */
+    }
   }
 
   // ---- actions

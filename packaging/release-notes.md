@@ -1,10 +1,15 @@
-**Android: your computers can always find the phone.**
+**Test release: your computer's mouse and keyboard on your Android phone.**
 
-**Fixed**
-- **The Android app no longer goes to sleep when no computer is connected.** Before, WinLink stopped its background service 30 seconds after the last computer disconnected, so Android froze the app and it stayed unreachable until you opened it again. Now it keeps running whenever *Stay connected* is on, and its notification says *Waiting for your computers*.
-- **With the screen off, the phone looks for your computers by itself** about once a minute (Android may stretch that to every few minutes in deep sleep), so it reconnects without you touching it. For this to work in deep sleep, set WinLink to run unrestricted: *Settings › In the background › Allow* in the app.
+**New**
+- **Use the phone with your computer's mouse and keyboard.** The phone becomes one more screen in *Keyboard and mouse*: drag it next to your computer's screen, then move the pointer off that edge and onto the phone.
+  - Click to tap, hold to long-press, drag to scroll or move things. The wheel scrolls. Right-click is a long press.
+  - Typing goes into the text box you're in. Ctrl+C, V, X and A work (⌘ on a Mac). Esc is Back, the Windows key is Home (Ctrl on a Mac), Alt+Tab is Recents. The volume and media keys work too.
+  - **To turn it on:** in the Android app, open the **Trackpad** tab and tap **Turn on in Accessibility**, then turn on *WinLink mouse and keyboard*. On Android 13+, if it's greyed out: App info › ⋮ › **Allow restricted settings**, then try again.
+  - On Android 13+ typing works like a real keyboard. On Android 10–12, WinLink edits the text box directly, so some apps may not take arrow keys or Enter.
 
-Everything from [2026.11.11](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.11) is included.
+**Not tested on a real phone yet**: if the pointer speed, scrolling, drags or keys feel off, please open an issue.
+
+Everything from [2026.11.12](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.12) is included.
 
 **Downloads**
 | System | File | How |

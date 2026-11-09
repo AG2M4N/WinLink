@@ -37,6 +37,15 @@
         <action android:name="android.service.quicksettings.action.QS_TILE" />
       </intent-filter>
     </service>
+    <!-- Your computer's mouse and keyboard on this phone (turned on by you in Settings › Accessibility). -->
+    <service android:name="expo.modules.winlinknative.RemoteInputService" android:exported="true"
+      android:label="@string/winlink_remote_input_label"
+      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+      </intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/winlink_remote_input" />
+    </service>
     <!-- Invisible: reads the clipboard (only allowed while an app is in front), then closes. -->
     <activity android:name="expo.modules.winlinknative.ClipboardActivity" android:exported="false"
       android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true"

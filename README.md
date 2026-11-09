@@ -30,7 +30,7 @@ addresses to type. Everything goes directly between your own devices, encrypted.
 - 📋 **One clipboard.** Copy text, pictures or files on any device, paste on any other.
 - 📱 **Hands-free copying from Android.** What you copy on the phone reaches your computers with no tap.
 - 🖱️ **Your phone as a trackpad** for any of your Macs and PCs.
-- ⌨️ **One keyboard and mouse** across Mac, Windows and Linux: move the pointer off one screen onto the next.
+- ⌨️ **One keyboard and mouse** across Mac, Windows, Linux and Android phones: move the pointer off one screen onto the next.
 - 📁 **Files and folders** in any direction, with resume if the connection drops.
 - 🔊 **Sound anywhere:** play one device's sound on another.
 - 🌍 **From anywhere:** at home on Wi‑Fi, or across the internet with built-in Tailscale.
@@ -214,6 +214,11 @@ under *Accessibility*. On Linux it works on Wayland and X11.
 - **Windows admin windows:** Task Manager and installers block ordinary apps. Turn on **Work over admin
   windows** and click **Yes** on Windows' prompt to keep control over them.
 - It works at home and from anywhere, and fixes its own security certificates after a reinstall.
+- **Android phones too** (new in 2026.11.13, a test release): on the phone, turn on **WinLink mouse and
+  keyboard** under Settings › Accessibility (the Trackpad tab has a button), then drag the phone next to
+  your screen. Click to tap, the wheel scrolls, typing goes into the text box you're in, Ctrl+C/V/X/A
+  work (⌘ on a Mac), Esc is Back and the Windows key is Home (Ctrl on a Mac). Right-click is a long
+  press. On Android 13+, if the switch is greyed out: App info › ⋮ › **Allow restricted settings**.
 
 </details>
 

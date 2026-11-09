@@ -28,6 +28,21 @@ jobs:
       - run: pip install cryptography zeroconf
       - run: python mobile/tests/harness/desktop_clipfiles.py "$RUNNER_TEMP/clip"
 
+  phone-screen:
+    name: A phone as a keyboard-and-mouse screen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - run: pip install cryptography zeroconf
+      # Deskflow's protocol against a stand-in server, then WinLink's sharing with a stand-in engine
+      - run: python mobile/tests/harness/phone_screen.py
+      - run: |
+          printf '#!/bin/sh\nexec python "%s" "$@"\n' "$PWD/mobile/tests/harness/fake_deskflow_core.py" > "$RUNNER_TEMP/deskflow-core"
+          chmod +x "$RUNNER_TEMP/deskflow-core"
+          WINLINK_FAKE_CORE=1 WINLINK_DESKFLOW="$RUNNER_TEMP/deskflow-core" python mobile/tests/harness/desktop_phone.py "$RUNNER_TEMP/phone"
+
   linux-trackpad:
     name: Phone trackpad on Linux (virtual mouse)
     runs-on: ubuntu-24.04

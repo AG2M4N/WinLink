@@ -11,6 +11,8 @@ type Events = {
   onAutoClip(e: { running: boolean }): void;
   /** Android: woken (screen off, nothing connected) to look for computers for a few seconds. */
   onWake(e: Record<string, never>): void;
+  /** Android: the mouse-and-keyboard service was turned on or off, or the screen turned. */
+  onRemoteStatus(e: Record<string, never>): void;
 };
 
 declare class WinlinkNativeModule extends NativeModule<Events> {
@@ -56,6 +58,12 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   setBusy(on: boolean): void;
   /** Android, newer builds: no computer connected: asleep, wake now and then to look for them. */
   setWaiting(on: boolean): void;
+  /** Android, newer builds: the computer's mouse and keyboard on this phone (an accessibility service).
+   * on: running now; enabled: turned on in Settings; w, h: the size the pointer moves in. */
+  remoteStatus(): { on: boolean; enabled: boolean; w: number; h: number; keyboard: boolean };
+  remoteInput(msg: Record<string, unknown>): void;
+  openAccessibilitySettings(): void;
+  openAppDetails(): void;
   saveToDownloads(path: string, name: string, sub: string): Promise<string>;
   deleteSaved(uri: string): Promise<boolean>;
   openSaved(uri: string, mime: string | null): Promise<void>;

@@ -37,7 +37,7 @@ import secure
 import tailnet
 import tsembed
 
-VERSION = "2026.11.12"
+VERSION = "2026.11.13"
 PORT = int(os.environ.get("LINK_PORT", 50555))
 PROBE_PORT = int(os.environ.get("LINK_PROBE_PORT", 50555))   # WinLink's port on other devices
 BEACON_PORT = 50556

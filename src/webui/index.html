@@ -510,8 +510,8 @@ function renderKvm(s) {
           <div class="tile me" data-x="0" data-y="0" title="${attr(k.me.name)}">${I[k.me.os] || I.windows}<span class="nm">${esc(k.me.name)}</span><span class="st">This ${s.me.kind === "mac" ? "Mac" : "PC"}</span></div>
           ${placed.map(tile).join("")}</div>
         ${notes ? `<div class="kvm-notes">${notes}</div>` : ""}
-        <div class="tray" id="kvm-tray">${waiting.length ? waiting.map(tile).join("") : `<span class="sub">${k.computers.length ? "Drag a screen here to take it out." : "Connect another Mac or PC to place it here."}</span>`}</div>
-        <p class="hint">Arrange the screens the way they stand on your desk. Screens that touch are linked: the pointer moves across their shared edge.</p></div>`;
+        <div class="tray" id="kvm-tray">${waiting.length ? waiting.map(tile).join("") : `<span class="sub">${k.computers.length ? "Drag a screen here to take it out." : "Connect another computer or an Android phone to place it here."}</span>`}</div>
+        <p class="hint">Arrange the screens the way they stand on your desk. Screens that touch are linked: the pointer moves across their shared edge. An Android phone placed here is used with this mouse and keyboard too (turn on WinLink in the phone's Accessibility settings).</p></div>`;
       const mac = k.me.os === "mac";
       h += `<div class="row"><div class="grow"><div class="name">Swap Ctrl and ⌘ between Mac and PC</div>
         <div class="sub">${mac ? "⌘C on this Mac is Ctrl+C on a PC (and Ctrl is the Windows key there)."
@@ -932,7 +932,7 @@ function showSample() {
       computers: [{id: "1", name: "Msi", os: "windows", pos: [1, 0], text: "Connected", on: true, reachable: true},
                   {id: "2", name: "Studio PC", os: "windows", pos: [2, 0], text: "Connected", on: true, reachable: true},
                   {id: "6", name: "Office iMac", os: "mac", pos: [0, 1], text: "Connected", on: true, reachable: true}]},
-    about: {version: "2026.11.12", id: "3f9c2e1d7b8a4c605e1f2a9d8c7b6e54", port: 50555, paired: ["Msi", "Pixel 9", "Studio PC"]},
+    about: {version: "2026.11.13", id: "3f9c2e1d7b8a4c605e1f2a9d8c7b6e54", port: 50555, paired: ["Msi", "Pixel 9", "Studio PC"]},
     startup: {login: true, login_error: "", tray: true, tray_ok: true, tray_kind: "menubar", tray_note: ""},
   });
   addLogs([
