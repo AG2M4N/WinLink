@@ -121,10 +121,10 @@ ctx2 = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx2.load_cert_chain(other.cert)
 said = {}
 def server2():
     raw, _ = srv2.accept()
-    s = ctx2.wrap_socket(raw, server_side=True)
-    s.sendall(frame(b"Barrier" + struct.pack(">hh", 1, 8)))
-    s.settimeout(2)
-    try:
+    try:            # the client may hang up before (or right after) the hello: that's the refusal
+        s = ctx2.wrap_socket(raw, server_side=True)
+        s.sendall(frame(b"Barrier" + struct.pack(">hh", 1, 8)))
+        s.settimeout(2)
         said["reply"] = s.recv(100)
     except (OSError, ssl.SSLError):
         said["reply"] = b""
