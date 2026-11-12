@@ -51,20 +51,8 @@ class ClipboardActivity : Activity() {
     val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val clip = cm.primaryClip ?: return null
     if (clip.itemCount == 0) return null
+    ClipImages.read(this)?.let { return it }           // a photo or other picture
     val item = clip.getItemAt(0)
-    val uri = item.uri
-    val mime = clip.description?.getMimeType(0) ?: ""
-    if (uri != null && mime.startsWith("image/")) {
-      try {
-        contentResolver.openInputStream(uri)?.use { input ->
-          val bmp = BitmapFactory.decodeStream(input) ?: return@use
-          val out = ByteArrayOutputStream()
-          bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-          return mapOf("kind" to "image", "png" to Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
-        }
-      } catch (e: Throwable) {
-      }
-    }
     val text = item.coerceToText(this)?.toString() ?: return null
     if (text.isEmpty()) return null
     return mapOf("kind" to "text", "text" to text)

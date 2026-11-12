@@ -47,9 +47,21 @@ Get the latest version from the **[Releases](../../releases/latest) page**.
 | **Ubuntu, Debian, Mint** | `winlink_…_amd64.deb` (`_arm64.deb` for ARM) | `sudo apt install ./winlink_*.deb` |
 | **Fedora** | `winlink-….x86_64.rpm` (`.aarch64.rpm` for ARM) | `sudo dnf install ./winlink-*.rpm` |
 | **Other Linux** | the source code | `sh install_linux.sh` |
-| **Android** 10+ | `WinLink.apk` | Open it on the phone. |
+| **Android** 10+ | `WinLink-Basic.apk` or `WinLink-Full.apk` | Open it on the phone (see below for which). |
 
 To update, install the new version over the old one: pairings and settings stay.
+
+**Which Android app?** Both do everything (clipboard with photos, files, sound, trackpad, from anywhere)
+except one thing:
+
+| | **WinLink Basic** | **WinLink Full** |
+|---|---|---|
+| Use the phone with your **computer's mouse and keyboard** | — | ✓ |
+| Accessibility permission | never asked for | needed for that one feature, and only if you turn it on |
+| Play Protect warning when installing | no | yes (any app with an accessibility service gets one) |
+
+Not sure? Take **Basic**. You can switch at any time by installing the other one over it: they're the same
+app, so pairings and settings stay.
 
 <details>
 <summary><b>Notes for each system</b></summary>
@@ -86,6 +98,11 @@ Click a feature for how it works.
 
 - **Text and pictures** just appear on your other devices, with nothing to press. Pictures paste into any
   Windows app (Paint, Word, Outlook…), and go both ways with the Android app.
+- **Photos and Android:** copy a photo in Gallery or Google Photos and it reaches your computers as it was
+  taken (full quality JPEG; HEIC and WebP are converted). A photo *file* copied in Finder, Explorer or a
+  Linux file manager goes straight onto the phone's clipboard, ready to paste into any app (up to 30 MB,
+  the first photo if you copied several). Phones can't paste files, so for them the photo travels when you
+  copy it, not when you paste.
 - **Files and folders** copied in Finder, Explorer or a Linux file manager work too. Only their names go
   across when you copy; the files travel when you paste (in Explorer, or with ⌘V in a Finder window), or
   click *Save* on the Clipboard page.
@@ -214,11 +231,57 @@ under *Accessibility*. On Linux it works on Wayland and X11.
 - **Windows admin windows:** Task Manager and installers block ordinary apps. Turn on **Work over admin
   windows** and click **Yes** on Windows' prompt to keep control over them.
 - It works at home and from anywhere, and fixes its own security certificates after a reinstall.
-- **Android phones too** (new in 2026.11.13, a test release): on the phone, turn on **WinLink mouse and
-  keyboard** under Settings › Accessibility (the Trackpad tab has a button), then drag the phone next to
-  your screen. Click to tap, the wheel scrolls, typing goes into the text box you're in, Ctrl+C/V/X/A
-  work (⌘ on a Mac), Esc is Back and the Windows key is Home (Ctrl on a Mac). Right-click is a long
-  press. On Android 13+, if the switch is greyed out: App info › ⋮ › **Allow restricted settings**.
+- **Android phones too** (WinLink Full only): see the next section.
+
+</details>
+
+<a name="your-computers-mouse-and-keyboard-on-android"></a>
+<details>
+<summary>📲 <b>Your computer's mouse and keyboard on Android</b>: the phone as one more screen (WinLink Full)</summary>
+<br>
+
+Move the pointer off your computer's screen and onto the phone, and use it with the mouse and keyboard.
+It needs **WinLink Full** on the phone (`WinLink-Full.apk`) and keyboard and mouse sharing on the computer.
+
+**Set it up once:**
+
+1. **On the phone,** open WinLink → **Trackpad** tab → **Turn on in Accessibility**.
+2. Find **WinLink mouse and keyboard** (on some phones under *Installed apps* or *Downloaded apps*), open
+   it and turn it on. Android warns that it can control the phone: tap **Allow**.
+   - **Greyed out, or "Restricted setting"?** Android 13+ blocks this for apps installed from a file. Go
+     back, open **Settings → Apps → WinLink**, tap **⋮** (top right) → **Allow restricted settings**,
+     confirm, then turn it on in Accessibility again. (The ⋮ item only appears after you've tried once.)
+3. **On the computer:** **Devices → Keyboard and mouse → Share this computer's keyboard and mouse**, then
+   drag the phone next to the screen, on the side where it sits on your desk.
+4. Keep the phone connected to the computer in WinLink (*Stay connected* on, and run unrestricted in the
+   background, so it isn't dropped when the screen is off).
+
+**Using it:**
+
+| On the computer | On the phone |
+|---|---|
+| Click | tap |
+| Hold the button | long-press |
+| Click and drag | swipe, scroll a list, or move things (picks up after a short hold) |
+| Right-click | long-press |
+| Mouse wheel | scroll |
+| Typing | types into the text box you're in |
+| Ctrl+C, V, X, A (⌘ on a Mac) | copy, paste, cut, select all |
+| Esc, or the mouse's back button | Back |
+| Windows key on its own (Ctrl on a Mac) | Home |
+| Alt+Tab | Recents |
+| Windows+N / Windows+A | notifications / quick settings |
+| Volume and media keys | volume, play and pause, next and previous |
+
+- **Android 13 and newer** type like a real keyboard. On Android 10–12, WinLink edits the text box
+  directly, so a few apps may ignore the arrow keys or Enter.
+- Some screens don't accept taps from other apps: the lock screen, some banking apps, and some games.
+- **Play Protect** may warn when you install WinLink Full. Tap **More details → Install anyway**. If it
+  blocks the install outright, install it from a computer with `adb install WinLink-Full.apk`, or use
+  WinLink Basic, which never asks for this.
+- **Privacy:** WinLink only acts on the mouse and keyboard from a computer you paired, over WinLink's
+  encrypted link. The only thing it reads is the text box you're typing in, and it sends nothing from the
+  phone. To take it back, turn it off in Accessibility, or install WinLink Basic over it.
 
 </details>
 
@@ -308,6 +371,18 @@ Screenshots use sample data.
 </details>
 
 ## What's new
+
+<details open>
+<summary><b>2026.11.14</b>: your computer's mouse and keyboard on Android, photos on the clipboard, two Android apps</summary>
+
+- **Use the phone with your computer's mouse and keyboard:** drag the phone next to your screen and move
+  the pointer onto it ([how](#your-computers-mouse-and-keyboard-on-android)). In WinLink Full.
+- **Photos copy both ways with Android:** a photo copied on the phone reaches your computers at full
+  quality, and a photo file copied on a computer lands on the phone's clipboard.
+- **Two Android apps:** WinLink Basic never asks for accessibility access (and gets no Play Protect
+  warning); WinLink Full adds the mouse and keyboard. Same app otherwise, and either installs over the other.
+
+</details>
 
 <details>
 <summary><b>2026.11.11</b>: a much more reliable Android app</summary>

@@ -243,6 +243,9 @@ class WinlinkNativeModule : Module() {
         "running" to ClipWatcher.running, "paused" to ClipWatcher.paused, "refused" to ClipWatcher.refused,
         "package" to ctx.packageName)
     }
+    // Pictures on the clipboard (ClipImages): read one (WinLink must be in front), or put one there.
+    Function("readClipImage") { ClipImages.read(context) }
+    AsyncFunction("setClipImage") { data: String, kind: String -> ClipImages.write(context, data, kind) }
     Function("setAutoClip") { on: Boolean -> ClipWatcher.setEnabled(context, on) }
     Function("markOwnClip") { ClipWatcher.markOwn() }
     Function("openOverlaySettings") {

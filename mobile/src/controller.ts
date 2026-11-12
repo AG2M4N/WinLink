@@ -63,6 +63,7 @@ export interface Snapshot {
 
 /** A computer's mouse and keyboard on this phone (WinLink's accessibility service). */
 export interface RemoteView {
+  available: boolean;     // false: WinLink-Basic.apk, which leaves this out
   on: boolean;            // the service is running
   enabled: boolean;       // turned on in Settings (it may still be starting)
   keyboard: boolean;      // Android 13+: types like a real keyboard
@@ -461,9 +462,20 @@ class Controller {
         if (e.clip.kind === "text") {
           Clipboard.setStringAsync(e.clip.text).catch((err) => platform.log("warn", `couldn't set the clipboard: ${err}`));
           this.remember("in", e.clip.text, e.peer.name);
-        } else if (e.clip.png) {
-          Clipboard.setImageAsync(e.clip.png).catch((err) => platform.log("warn", `couldn't set the clipboard image: ${err}`));
-          this.remember("in", "Image", e.peer.name);
+        } else if (e.clip.png || e.clip.jpeg) {
+          const kind = e.clip.jpeg ? "jpeg" : "png";
+          const data = (e.clip.jpeg ?? e.clip.png)!;
+          // Our own: keeps a photo as it is (expo-clipboard decodes it and saves it again, slowly)
+          const put = async () => {
+            try {
+              await Native.setClipImage(data, kind);
+            } catch {
+              if (kind === "png") await Clipboard.setImageAsync(data);       // an older build
+              else throw new Error("this build can't put photos on the clipboard");
+            }
+          };
+          put().catch((err) => platform.log("warn", `couldn't set the clipboard image: ${err}`));
+          this.remember("in", kind === "jpeg" ? "Photo" : "Image", e.peer.name);
         }
         break;
       }
@@ -682,15 +694,17 @@ class Controller {
   /** Ask the service how it is, and tell the computers (they place the phone only while it's on). */
   refreshRemote() {
     if (RN.OS !== "android" || !this.node) return;
-    let st: { on: boolean; enabled: boolean; w: number; h: number; keyboard: boolean };
+    let st: { available?: boolean; on: boolean; enabled: boolean; w: number; h: number; keyboard: boolean };
     try {
       st = Native.remoteStatus();
     } catch {
       return;                               // an older build
     }
     if (!st.on) this.remoteFrom = null;
-    this.remote = { on: st.on, enabled: st.enabled, keyboard: st.keyboard, from: this.remoteFrom };
-    const why = st.on ? "" : st.enabled
+    const available = st.available !== false;
+    this.remote = { available, on: st.on, enabled: st.enabled, keyboard: st.keyboard, from: this.remoteFrom };
+    const why = !available ? "This phone has WinLink Basic. Install WinLink-Full.apk to use the mouse and keyboard on it"
+      : st.on ? "" : st.enabled
       ? "Turn WinLink mouse and keyboard off and on again in the phone's Settings › Accessibility"
       : "Turn on WinLink mouse and keyboard in the phone's Settings › Accessibility";
     this.node.setPhoneStatus({ ready: st.on, w: st.w, h: st.h, why });
@@ -799,7 +813,17 @@ class Controller {
     }
     let text = "";
     try {
-      if (await Clipboard.hasImageAsync()) {
+      let pic: { kind: "image"; png?: string; jpeg?: string } | null | undefined;
+      try {
+        pic = Native.readClipImage();            // a photo as it was taken (JPEG), not a huge PNG
+      } catch {
+        pic = undefined;                         // an older build
+      }
+      if (pic && (pic.png || pic.jpeg)) {
+        this.shareClip(pic);
+        return;
+      }
+      if (pic === undefined && await Clipboard.hasImageAsync()) {
         const img = await Clipboard.getImageAsync({ format: "png" });
         if (img?.data) {
           this.shareClip({ kind: "image", png: img.data.replace(/^data:image\/png;base64,/, "") });
@@ -819,10 +843,12 @@ class Controller {
   }
 
   /** auto: from "Send copies automatically", right after a copy: quiet, and never what a computer just sent. */
-  shareClip(c: ({ kind: "text"; text: string } | { kind: "image"; png: string }) & { auto?: boolean }) {
+  shareClip(c: ({ kind: "text"; text: string } | { kind: "image"; png?: string; jpeg?: string }) & { auto?: boolean }) {
     if (!this.node) return;
     const auto = c.auto === true;
-    const clip = c.kind === "text" ? { kind: "text" as const, text: c.text } : { kind: "image" as const, png: c.png };
+    const clip = c.kind === "text" ? { kind: "text" as const, text: c.text }
+      : c.jpeg ? { kind: "image" as const, jpeg: c.jpeg } : { kind: "image" as const, png: c.png ?? "" };
+    if (clip.kind === "image" && !clip.jpeg && !clip.png) return;
     const on = this.node.connected();
     if (auto) {
       if (!on.length || !this.settings?.clipboard) return;

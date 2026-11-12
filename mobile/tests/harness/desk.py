@@ -49,6 +49,10 @@ for line in sys.stdin:
     peer = node.peers.get(cmd.get("peer", ""))
     c = cmd["cmd"]
     if c == "clip": node.send_clip({"kind": "text", "text": cmd["text"]})
+    elif c == "clip_photo":       # files copied here, as the clipboard loop sends them to phones
+        pic = net.phone_picture(cmd["paths"])
+        out(ev="photo", kind=sorted(pic) if pic else None)
+        if pic: node.send_clip(pic, only=[p for p in node.connected() if p.os in ("android", "ios")])
     elif c == "send": out(ev="sending", n=node.send_paths(peer, cmd["paths"]))
     elif c == "sound": sender.start(peer)
     elif c == "sound_stop": sender.stop()

@@ -37,7 +37,7 @@ import secure
 import tailnet
 import tsembed
 
-VERSION = "2026.11.13"
+VERSION = "2026.11.14"
 PORT = int(os.environ.get("LINK_PORT", 50555))
 PROBE_PORT = int(os.environ.get("LINK_PROBE_PORT", 50555))   # WinLink's port on other devices
 BEACON_PORT = 50556
@@ -1254,14 +1254,17 @@ class Node:
             self.emit("peers")
 
     # ---- clipboard
-    def send_clip(self, item, exclude=None):
-        """Send a clipboard item to every connected device (except `exclude`, the one it came from)."""
+    def send_clip(self, item, exclude=None, only=None):
+        """Send a clipboard item to every connected device (except `exclude`, the one it came from;
+        only: just to these peers)."""
         msg = {"type": "clip", "kind": item["kind"]}
         if item["kind"] == "text":
             msg["text"] = item["text"]
         elif item["kind"] == "files":               # only the names: the files come when pasted
             msg.update({k: item[k] for k in ("id", "count", "size")})
             msg["names"] = item["names"][:CLIP_FILES_SHOWN]
+        elif item.get("jpeg") and not item.get("png"):    # a photo, as it was taken (phones take JPEG too)
+            msg["jpeg"] = base64.b64encode(item["jpeg"]).decode()
         else:
             png = item.get("png") or bmp_to_png(item.get("bmp"))
             if png:                       # phones only take PNG; a Windows copy is often a BMP only
@@ -1270,7 +1273,7 @@ class Node:
                 msg["bmp"] = base64.b64encode(item["bmp"]).decode()
 
         def work():
-            for peer in self.connected():
+            for peer in only if only is not None else self.connected():
                 if exclude is not None and peer.id == exclude:
                     continue
                 try:
@@ -1880,6 +1883,57 @@ def clean_beacon(info):
     return {"id": h["id"], "name": h["name"], "os": h["os"], "port": h["port"]}
 
 
+IMAGE_EXTS = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".heic": "other", ".heif": "other", ".webp": "other",
+              ".gif": "other", ".bmp": "other", ".tif": "other", ".tiff": "other"}
+PHONE_IMAGE_MAX = 30 << 20      # a copied photo file goes to phones as a picture up to this size
+
+
+def image_to_png(data):
+    """Any picture (JPEG, HEIC, WebP...) -> PNG bytes, or None. Pillow, else macOS's own decoder."""
+    if not data:
+        return None
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as im:
+            out = io.BytesIO()
+            (im if im.mode in ("RGB", "RGBA", "L", "LA", "P") else im.convert("RGBA")).save(out, "PNG")
+            return out.getvalue()
+    except Exception as e:  # noqa: BLE001
+        pil_error = e
+    if sys.platform == "darwin":
+        try:
+            from AppKit import NSBitmapImageRep
+            from Foundation import NSData
+            rep = NSBitmapImageRep.imageRepWithData_(NSData.dataWithBytes_length_(data, len(data)))
+            if rep is not None:
+                return bytes(rep.representationUsingType_properties_(4, {}))
+        except Exception as e:  # noqa: BLE001
+            log.debug("clipboard: macOS couldn't read the picture: %s", e)
+    log.debug("clipboard: couldn't read the picture: %s", pil_error)
+    return None
+
+
+def phone_picture(paths):
+    """Files copied here, as a picture for phones (they can't paste files): the first image among them,
+    as {"kind": "image", "jpeg" | "png": bytes}, or None."""
+    for p in paths[:20]:
+        kind = IMAGE_EXTS.get(os.path.splitext(p)[1].lower())
+        try:
+            if kind is None or not os.path.isfile(p) or os.path.getsize(p) > PHONE_IMAGE_MAX:
+                continue
+            with open(p, "rb") as f:
+                data = f.read()
+        except OSError:
+            continue
+        if kind == "jpeg" and data[:3] == b"\xff\xd8\xff":
+            return {"kind": "image", "jpeg": data}
+        png = data if kind == "png" and data[:8] == b"\x89PNG\r\n\x1a\n" else image_to_png(data)
+        if png:
+            return {"kind": "image", "png": png}
+    return None
+
+
 def bmp_to_png(bmp):
     """A BMP file -> PNG bytes (None if there's no BMP, or Pillow can't read it)."""
     if not bmp or bmp[:2] != b"BM":
@@ -1932,9 +1986,9 @@ def clean_clip(msg):
             return {"kind": "files", "id": msg["id"], "names": names, "count": max(count, -1),
                     "size": min(max(size, -1), MAX_FILE)}      # -1: not counted (a huge folder)
         return None
-    if kind == "image" and all(isinstance(msg.get(k), str) for k in ("png", "bmp") if k in msg) \
-            and (msg.get("png") or msg.get("bmp")):
-        return {"kind": "image", **{k: msg[k] for k in ("png", "bmp") if msg.get(k)}}
+    if kind == "image" and all(isinstance(msg.get(k), str) for k in ("png", "bmp", "jpeg") if k in msg) \
+            and (msg.get("png") or msg.get("bmp") or msg.get("jpeg")):
+        return {"kind": "image", **{k: msg[k] for k in ("png", "bmp", "jpeg") if msg.get(k)}}
     return None
 
 

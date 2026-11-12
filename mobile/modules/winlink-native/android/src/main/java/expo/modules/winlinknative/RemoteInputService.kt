@@ -60,11 +60,19 @@ class RemoteInputService : AccessibilityService() {
       return list.split(':').any { ComponentName.unflattenFromString(it) == me }
     }
 
+    /** In this APK at all? WinLink-Basic.apk leaves the service out of its manifest. */
+    fun available(ctx: Context): Boolean = try {
+      ctx.packageManager.getServiceInfo(ComponentName(ctx, RemoteInputService::class.java), 0)
+      true
+    } catch (e: Throwable) {
+      false
+    }
+
     /** For the app and the computers: is it on, and the screen size the pointer moves in. */
     fun status(ctx: Context): Map<String, Any?> {
       val s = instance
       val (w, h) = s?.shape() ?: Pair(0, 0)
-      return mapOf("on" to (s != null), "enabled" to enabled(ctx), "w" to w, "h" to h,
+      return mapOf("available" to available(ctx), "on" to (s != null), "enabled" to enabled(ctx), "w" to w, "h" to h,
         "keyboard" to (Build.VERSION.SDK_INT >= 33))
     }
 

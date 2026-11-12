@@ -184,7 +184,7 @@ export type NodeEvent =
   | { kind: "batch"; batch: Batch }
   | { kind: "received"; path: string; name: string; from: string; size: number }
   | { kind: "removed"; paths: string[] }
-  | { kind: "clip_in"; peer: Peer; clip: { kind: "text"; text: string } | { kind: "image"; png?: string; bmp?: string } }
+  | { kind: "clip_in"; peer: Peer; clip: { kind: "text"; text: string } | { kind: "image"; png?: string; bmp?: string; jpeg?: string } }
   | { kind: "pair_code"; peer: Peer; code: string }
   | { kind: "notice"; text: string }
   | { kind: "sound_in"; peer: Peer | null; info: SoundInfo | null }
@@ -769,7 +769,7 @@ export class Node {
     peer?.control?.send({ type: "pointer", ...msg }).catch(() => undefined);
   }
 
-  sendClip(clip: { kind: "text"; text: string } | { kind: "image"; png: string }, except?: string) {
+  sendClip(clip: { kind: "text"; text: string } | { kind: "image"; png?: string; jpeg?: string }, except?: string) {
     const msg = { type: "clip", ...clip };
     for (const p of this.connected()) {
       if (p.id === except) continue;
@@ -1365,10 +1365,11 @@ function cleanHello(h: any) {
     nonce: unb64(String(h.nonce ?? ""), 16), pair: !!h.pair, manual: !!h.manual };
 }
 
-function cleanClip(msg: any): { kind: "text"; text: string } | { kind: "image"; png?: string; bmp?: string } | null {
+function cleanClip(msg: any): { kind: "text"; text: string } | { kind: "image"; png?: string; bmp?: string; jpeg?: string } | null {
   if (msg.kind === "text" && typeof msg.text === "string") return { kind: "text", text: msg.text.slice(0, 4 << 20) };
-  if (msg.kind === "image" && (typeof msg.png === "string" || typeof msg.bmp === "string")) {
-    return { kind: "image", png: typeof msg.png === "string" ? msg.png : undefined, bmp: typeof msg.bmp === "string" ? msg.bmp : undefined };
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  if (msg.kind === "image" && (str(msg.png) || str(msg.bmp) || str(msg.jpeg))) {
+    return { kind: "image", png: str(msg.png), bmp: str(msg.bmp), jpeg: str(msg.jpeg) };
   }
   return null;
 }

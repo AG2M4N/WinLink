@@ -1,6 +1,6 @@
 #!/bin/sh
 # One time only: makes WinLink's Android signing key and gives it to GitHub, so the release
-# workflow (.github/workflows/release.yml) can sign WinLink.apk.
+# workflow (.github/workflows/release.yml) can sign the Android apps (WinLink-Basic.apk, WinLink-Full.apk).
 #
 #   sh packaging/android/make_signing_key.sh            (needs keytool from a JDK, and gh signed in)
 #

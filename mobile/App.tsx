@@ -359,6 +359,13 @@ function TrackpadPage({ c, st, snap }: PageProps) {
 /** The other way round: the computer's mouse and keyboard on this phone (an accessibility service). */
 function RemoteCard({ c, st, r }: { c: Colors; st: PageProps["st"]; r: RemoteView }) {
   const [open, setOpen] = useState(false);
+  if (!r.available) {
+    return (
+      <Text style={[st.hint, { marginBottom: 10, marginTop: 0 }]}>
+        This is WinLink Basic. To use your computer's mouse and keyboard on this phone, install WinLink-Full.apk from the releases page (it needs an accessibility permission).
+      </Text>
+    );
+  }
   if (r.on) {
     return (
       <Text style={[st.sub, { marginBottom: 10, color: r.from ? c.good : c.text2 }]}>

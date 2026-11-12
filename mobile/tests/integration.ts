@@ -79,6 +79,17 @@ const phone = new Node(settings, plat, (e) => phoneEvents.push(e));
     const di = await until(() => events.find((e) => e.ev === "clip_in"));
     check("clip phone -> desktop", di?.clip?.text === "from phone ✓");
 
+    // photos: a JPEG goes as it was taken, both ways (a photo file copied on the computer reaches the phone)
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(nodeRandom(200 * 1024))]);
+    const photo = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "wl-photo-")), "IMG_7731.JPG");
+    fs.writeFileSync(photo, jpeg);
+    send({ cmd: "clip_photo", paths: [photo] });
+    const pi = await until(() => phoneEvents.find((e) => e.kind === "clip_in" && e.clip?.kind === "image"));
+    check("photo file copied on the computer -> phone (JPEG)", pi?.clip?.jpeg === jpeg.toString("base64") && !pi?.clip?.png);
+    phone.sendClip({ kind: "image", jpeg: jpeg.toString("base64") });
+    const pd = await until(() => events.find((e) => e.ev === "clip_in" && e.clip?.kind === "image"));
+    check("photo phone -> desktop (JPEG)", pd?.clip?.jpeg === jpeg.toString("base64"));
+
     // file phone -> desktop (3 MB)
     const big = new Uint8Array(nodeRandom(3 * 2 ** 20));
     const src: FileSource = { name: "phone photo.bin", size: big.length, key: "k1", read: async (o, n) => big.subarray(o, o + n) };

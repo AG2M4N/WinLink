@@ -37,7 +37,8 @@
         <action android:name="android.service.quicksettings.action.QS_TILE" />
       </intent-filter>
     </service>
-    <!-- Your computer's mouse and keyboard on this phone (turned on by you in Settings › Accessibility). -->
+    <!-- full:start  Your computer's mouse and keyboard on this phone (turned on by you in Settings ›
+         Accessibility). Only in WinLink-Full.apk: packaging/android/basic.py takes it out of WinLink-Basic.apk. -->
     <service android:name="expo.modules.winlinknative.RemoteInputService" android:exported="true"
       android:label="@string/winlink_remote_input_label"
       android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
@@ -46,6 +47,12 @@
       </intent-filter>
       <meta-data android:name="android.accessibilityservice" android:resource="@xml/winlink_remote_input" />
     </service>
+    <!-- full:end -->
+    <!-- Pictures from a computer on the clipboard (ClipImages). -->
+    <provider android:name="expo.modules.winlinknative.ClipImageProvider"
+      android:authorities="${applicationId}.winlinkclip" android:exported="false" android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/winlink_clip_paths" />
+    </provider>
     <!-- Invisible: reads the clipboard (only allowed while an app is in front), then closes. -->
     <activity android:name="expo.modules.winlinknative.ClipboardActivity" android:exported="false"
       android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true"

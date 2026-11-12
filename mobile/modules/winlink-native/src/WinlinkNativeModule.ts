@@ -4,7 +4,7 @@ type Events = {
   onPcm(e: { data: string }): void;
   onCapture(e: { state: "started" | "stopped" | "error"; error?: string; rate?: number; channels?: number }): void;
   /** auto: sent by "Send copies automatically" right after a copy (not a tap). */
-  onClipboardShare(e: ({ kind: "text"; text: string } | { kind: "image"; png: string }) & { auto?: boolean }): void;
+  onClipboardShare(e: ({ kind: "text"; text: string } | { kind: "image"; png?: string; jpeg?: string }) & { auto?: boolean }): void;
   onNetwork(e: { up: boolean; wifi: boolean }): void;
   onTick(e: Record<string, never>): void;
   onScreen(e: { on: boolean }): void;
@@ -45,7 +45,11 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   tsRunning(): boolean;
   /** Stop it and delete its stored state (after signing out). */
   tsWipe(): void;
-  takePendingClip(): { kind: "text"; text: string } | { kind: "image"; png: string } | null;
+  takePendingClip(): { kind: "text"; text: string } | { kind: "image"; png?: string; jpeg?: string } | null;
+  /** Android, newer builds: the picture on the clipboard (a photo is sent as it was taken), or null. */
+  readClipImage(): { kind: "image"; png?: string; jpeg?: string } | null;
+  /** Android, newer builds: put a picture on the clipboard (kind: "jpeg" or "png"). */
+  setClipImage(data: string, kind: "jpeg" | "png"): Promise<void>;
   /** Android, newer builds: "Send copies automatically" and the two permissions it needs. */
   autoClipStatus(): { on: boolean; logs: boolean; overlay: boolean; running: boolean; paused?: boolean; refused?: boolean; package: string };
   setAutoClip(on: boolean): void;
@@ -60,7 +64,7 @@ declare class WinlinkNativeModule extends NativeModule<Events> {
   setWaiting(on: boolean): void;
   /** Android, newer builds: the computer's mouse and keyboard on this phone (an accessibility service).
    * on: running now; enabled: turned on in Settings; w, h: the size the pointer moves in. */
-  remoteStatus(): { on: boolean; enabled: boolean; w: number; h: number; keyboard: boolean };
+  remoteStatus(): { available?: boolean; on: boolean; enabled: boolean; w: number; h: number; keyboard: boolean };
   remoteInput(msg: Record<string, unknown>): void;
   openAccessibilitySettings(): void;
   openAppDetails(): void;

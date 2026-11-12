@@ -78,7 +78,7 @@ def item_hash(item):
     elif item["kind"] == "files":
         data = "\0".join(item.get("paths") or [item.get("id", "")]).encode("utf-8", "ignore")
     else:
-        data = item.get("png") or item.get("bmp") or b""
+        data = item.get("png") or item.get("bmp") or item.get("jpeg") or b""
     return hashlib.sha1(data).hexdigest()
 
 
@@ -99,7 +99,13 @@ def clip_item(msg):
         return {"kind": "text", "text": msg.get("text", "")}
     if kind == "files":
         return {k: msg[k] for k in ("kind", "id", "names", "count", "size")}
-    return {"kind": "image", **{k: base64.b64decode(msg[k]) for k in ("png", "bmp") if msg.get(k)}}
+    item = {"kind": "image", **{k: base64.b64decode(msg[k]) for k in ("png", "bmp", "jpeg") if msg.get(k)}}
+    if item.get("jpeg") and not item.get("png"):          # a phone's photo: the clipboards here take PNG
+        png = net.image_to_png(item["jpeg"])
+        if png:
+            item["png"] = png
+            del item["jpeg"]
+    return item
 
 
 def files_preview(item):
@@ -1056,8 +1062,17 @@ class App:
                     h = item_hash(item)
                     if h != last_hash:
                         last_hash = h
-                        item = self.node.offer_files(item["paths"])
-                        self.node.send_clip(item)
+                        paths = item["paths"]
+                        phones = [p for p in self.node.connected() if p.os in ("android", "ios")]
+                        computers = [p for p in self.node.connected() if p not in phones]
+                        item = self.node.offer_files(paths)
+                        if computers:
+                            self.node.send_clip(item, only=computers)
+                        # Phones can't paste files (and can't say when they paste): a copied photo goes
+                        # to them as a picture right away, the way a copied image does.
+                        pic = net.phone_picture(paths) if phones else None
+                        if pic:
+                            self.node.send_clip(pic, only=phones)
                         self._remember_clip("out", item, ", ".join(p.name for p in self.node.connected()))
                     continue
                 size = len(item.get("text", "")) if item["kind"] == "text" else \
