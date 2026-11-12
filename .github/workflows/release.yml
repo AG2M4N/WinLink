@@ -262,7 +262,7 @@ jobs:
           find stage/vendor -name "*.so" -print -delete     # must stay pure Python: any distro, any Python 3.10+
       - name: Packages
         run: |
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
           ~/go/bin/nfpm package -f packaging/linux/nfpm.yaml -p deb -t release/
           ~/go/bin/nfpm package -f packaging/linux/nfpm.yaml -p rpm -t release/
           ls -la release
