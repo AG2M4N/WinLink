@@ -1,10 +1,9 @@
-**The tray icon on Linux.**
+**Copies sent automatically again on Android 15 and 16.**
 
 **Fixed**
-- **Linux: the tray icon is back.** WinLink couldn't find its own icon in the .deb and .rpm packages, so it showed no tray icon (the log said *'NoneType' object has no attribute 'read'*) and the window had no icon. If the icon file is ever missing, the tray now draws a plain one instead of giving up.
-- **Android setup:** the README explains two more ADB messages: *more than one device/emulator*, and *GRANT_RUNTIME_PERMISSIONS* (Xiaomi, Redmi, POCO: turn on *USB debugging (Security settings)*; OPPO, Realme, OnePlus: *Disable permission monitoring*).
+- **Android: *Send copies automatically* works on Android 15 and 16.** WinLink noticed each copy, but Android refused to let it open its invisible clipboard screen from the background (*"Background activity launch blocked"*), so nothing was sent. Seen on OnePlus with Android 16; it affects any phone on Android 15+. WinLink now reads the clipboard from a 1-pixel invisible window shown for a moment instead, which the *display over other apps* permission you already gave allows. Nothing to set up again.
 
-Nothing changed for Windows, Mac or Android since [2026.11.14](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.14) (your computer's mouse and keyboard on Android, photos on the clipboard, and the two Android apps, **`WinLink-Basic.apk`** and **`WinLink-Full.apk`**); updating them is optional.
+Update the Android app (**`WinLink-Basic.apk`** or **`WinLink-Full.apk`**, either installs over the one you have). Nothing changed for Windows, Mac or Linux since [2026.11.15](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.15), which fixed the tray icon on Linux.
 
 **Downloads**
 | System | File | How |

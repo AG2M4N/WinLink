@@ -375,6 +375,16 @@ Screenshots use sample data.
 ## What's new
 
 <details open>
+<summary><b>2026.11.16</b>: copies sent automatically again on Android 15 and 16</summary>
+
+- **Android: *Send copies automatically* works on Android 15 and 16.** Android stopped letting WinLink
+  open its invisible clipboard screen from the background, so copies weren't sent (seen on OnePlus).
+  WinLink now reads the clipboard from a tiny invisible window instead, with the permissions you
+  already gave.
+
+</details>
+
+<details>
 <summary><b>2026.11.15</b>: the tray icon on Linux</summary>
 
 - **Linux: the tray icon is back.** WinLink couldn't find its own icon in the .deb and .rpm packages, so
