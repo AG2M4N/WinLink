@@ -17,6 +17,18 @@ import java.io.ByteArrayOutputStream
 class ClipboardActivity : Activity() {
   companion object {
     const val AUTO = "auto"
+
+    /** What's on the clipboard, for sending; null if empty. Only works while WinLink has the focus. */
+    fun readClip(ctx: Context): Map<String, Any?>? {
+      val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+      val clip = cm.primaryClip ?: return null
+      if (clip.itemCount == 0) return null
+      ClipImages.read(ctx)?.let { return it }           // a photo or other picture
+      val item = clip.getItemAt(0)
+      val text = item.coerceToText(ctx)?.toString() ?: return null
+      if (text.isEmpty()) return null
+      return mapOf("kind" to "text", "text" to text)
+    }
   }
 
   private var done = false
@@ -47,14 +59,5 @@ class ClipboardActivity : Activity() {
     if (auto) overridePendingTransition(0, 0)
   }
 
-  private fun read(): Map<String, Any?>? {
-    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = cm.primaryClip ?: return null
-    if (clip.itemCount == 0) return null
-    ClipImages.read(this)?.let { return it }           // a photo or other picture
-    val item = clip.getItemAt(0)
-    val text = item.coerceToText(this)?.toString() ?: return null
-    if (text.isEmpty()) return null
-    return mapOf("kind" to "text", "text" to text)
-  }
+  private fun read(): Map<String, Any?>? = readClip(this)
 }

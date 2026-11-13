@@ -25,9 +25,10 @@ import java.util.Locale
  * Since Android 10 only the app in front may read the clipboard, and apps in the background aren't
  * even told it changed. But when it changes, Android logs that it refused to tell WinLink
  * ("Denying clipboard access to local.akshat.winlink…"). With READ_LOGS, WinLink watches for that
- * line in the system log and then opens its invisible ClipboardActivity for a moment, which may read
- * the clipboard and hands it to the JS side to send. Opening a screen from the background needs
- * "display over other apps" (SYSTEM_ALERT_WINDOW).
+ * line in the system log and then shows a 1-pixel invisible window over other apps for a moment
+ * (ClipOverlay), which may read the clipboard and hands it to the JS side to send. That needs
+ * "display over other apps" (SYSTEM_ALERT_WINDOW). (Before, it opened the invisible ClipboardActivity,
+ * now only the fallback: Android 15+ blocks that launch from the background.)
  *
  * Android 13+ also asks the person ("Allow WinLink to access all device logs?") each time a log
  * reader starts, and only while WinLink is on screen: a reader started from the background is
@@ -226,6 +227,17 @@ object ClipWatcher {
     val now = SystemClock.elapsedRealtime()
     if (now < ownUntil || now - lastTrigger < 400) return     // our own paste, or the same copy logged twice
     lastTrigger = now
+    // A tiny window over other apps first (works on Android 15+); the invisible screen if that can't run.
+    val viaOverlay = ClipOverlay.read(ctx) { body, focused ->
+      when {
+        body != null -> Bridge.send("onClipboardShare", body + ("auto" to true))
+        !focused -> openScreen(ctx)
+      }
+    }
+    if (!viaOverlay) openScreen(ctx)
+  }
+
+  private fun openScreen(ctx: Context) {
     try {
       ctx.startActivity(Intent(ctx, ClipboardActivity::class.java)
         .putExtra(ClipboardActivity.AUTO, true)
