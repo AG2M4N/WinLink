@@ -1,19 +1,10 @@
-**Your computer's mouse and keyboard on Android, photos on the clipboard, and two Android apps.**
-
-**New**
-- **Use the phone with your computer's mouse and keyboard** (WinLink Full). The phone becomes one more screen in *Keyboard and mouse*: drag it next to your computer's screen and move the pointer onto it. Click to tap, drag to scroll, type into any text box; Esc is Back, the Windows key is Home (Ctrl on a Mac). Setup and every key: [README](https://github.com/AG2M4N/WinLink#your-computers-mouse-and-keyboard-on-android).
-- **Two Android apps. Pick one:**
-  - **`WinLink-Basic.apk`**: everything except the mouse and keyboard on the phone. Never asks for accessibility access, so Play Protect doesn't warn. Take this one if you're unsure.
-  - **`WinLink-Full.apk`**: adds the mouse and keyboard on the phone. It has an accessibility service, so Play Protect may warn when installing (*More details → Install anyway*). On Android 13+, allow it once: *Settings › Apps › WinLink › ⋮ › Allow restricted settings*.
-  - They're the same app: install either over the other at any time and your pairings stay.
+**The tray icon on Linux.**
 
 **Fixed**
-- **Photos copied on Android now reach your computers.** A photo copied in Gallery or Google Photos is sent as it was taken (JPEG, full quality), not as a huge PNG that often didn't arrive. HEIC and WebP are converted.
-- **Photos copied on a computer now reach Android.** A photo *file* copied in Finder, Explorer or a file manager goes onto the phone's clipboard, ready to paste (up to 30 MB). Pictures copied as images, such as screenshots, keep working, and are no longer re-encoded on the phone.
+- **Linux: the tray icon is back.** WinLink couldn't find its own icon in the .deb and .rpm packages, so it showed no tray icon (the log said *'NoneType' object has no attribute 'read'*) and the window had no icon. If the icon file is ever missing, the tray now draws a plain one instead of giving up.
+- **Android setup:** the README explains two more ADB messages: *more than one device/emulator*, and *GRANT_RUNTIME_PERMISSIONS* (Xiaomi, Redmi, POCO: turn on *USB debugging (Security settings)*; OPPO, Realme, OnePlus: *Disable permission monitoring*).
 
-Update both the computers and the phone: older versions can't read photos sent the new way.
-
-Everything from [2026.11.12](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.12) is included.
+Nothing changed for Windows, Mac or Android since [2026.11.14](https://github.com/AG2M4N/WinLink/releases/tag/v2026.11.14) (your computer's mouse and keyboard on Android, photos on the clipboard, and the two Android apps, **`WinLink-Basic.apk`** and **`WinLink-Full.apk`**); updating them is optional.
 
 **Downloads**
 | System | File | How |

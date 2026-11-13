@@ -181,7 +181,9 @@ and paste it on your computer.
 |---|---|
 | `adb` not found | Install ADB (step 1); on Windows, open a new terminal afterwards. |
 | `adb devices` shows nothing or `unauthorized` | Unlock the phone, tap **Allow**, try another cable or port. |
+| `more than one device/emulator` | Run `adb devices`, then add `-s` and the phone's serial: `adb -s <serial> shell pm grant …`. (The same phone can show up twice, by cable and by Wi‑Fi; either line works.) |
 | `has not requested permission` | Update the Android app, then run the command again. |
+| `Neither user 2000 nor current process has android.permission.GRANT_RUNTIME_PERMISSIONS` | Your phone's maker blocks ADB from granting permissions. **Xiaomi, Redmi, POCO:** in *Developer options*, also turn on **USB debugging (Security settings)** (it needs a SIM card and a Xiaomi account). **OPPO, Realme, OnePlus:** turn on **Disable permission monitoring**. Then unplug the phone, plug it back in, and run the command again. |
 | `Shell does not have permission to access user 150` | Leave out `--user`: that's a protected profile such as Samsung's Secure Folder. |
 
 </details>
@@ -373,6 +375,16 @@ Screenshots use sample data.
 ## What's new
 
 <details open>
+<summary><b>2026.11.15</b>: the tray icon on Linux</summary>
+
+- **Linux: the tray icon is back.** WinLink couldn't find its own icon in the .deb and .rpm packages, so
+  it showed no tray icon (the log said *'NoneType' object has no attribute 'read'*) and no window icon.
+- **Android setup:** the README now explains two more ADB messages: *more than one device/emulator*,
+  and *GRANT_RUNTIME_PERMISSIONS* on Xiaomi, OPPO and OnePlus phones.
+
+</details>
+
+<details>
 <summary><b>2026.11.14</b>: your computer's mouse and keyboard on Android, photos on the clipboard, two Android apps</summary>
 
 - **Use the phone with your computer's mouse and keyboard:** drag the phone next to your screen and move

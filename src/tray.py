@@ -103,8 +103,13 @@ class PystrayIcon:
         import pystray
         from PIL import Image
         self.app = app
-        image = Image.open(icon_path).convert("RGBA")
-        image.thumbnail((64, 64))
+        if icon_path:
+            image = Image.open(icon_path).convert("RGBA")
+            image.thumbnail((64, 64))
+        else:                                       # no icon file: a plain blue dot rather than no tray
+            from PIL import ImageDraw
+            image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            ImageDraw.Draw(image).ellipse((4, 4, 60, 60), fill=(37, 99, 235, 255))
 
         def entry(i):
             def text(_item):

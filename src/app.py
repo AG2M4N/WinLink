@@ -56,9 +56,11 @@ def resource(*parts):
 
 
 def icon_path():
-    """WinLink.png: next to the app in a build, in assets/ when run from the source folder."""
+    """WinLink.png: next to the app in a build, in assets/ when run from the source folder, and where
+    the Linux packages put it (the desktop's icon theme)."""
     for path in (resource("WinLink.png"),
-                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "WinLink.png")):
+                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "WinLink.png"),
+                 "/usr/share/icons/hicolor/256x256/apps/winlink.png"):
         if os.path.exists(path):
             return path
     return None
